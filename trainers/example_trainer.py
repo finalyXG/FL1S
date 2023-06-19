@@ -1,11 +1,15 @@
 from base.base_train import BaseTrain
 from tqdm import tqdm
 import numpy as np
-
+import tensorflow as tf
 
 class ExampleTrainer(BaseTrain):
-    def __init__(self, sess, model, data, config,logger):
-        super(ExampleTrainer, self).__init__(sess, model, data, config,logger)
+    def __init__(self, model, data, config):#,logger):
+        super(ExampleTrainer, self).__init__( model, data, config)#,logger)
+        self.optimizer = tf.keras.optimizers.Adam()
+                
+        self.train_loss = tf.keras.metrics.Mean(name='train_loss')
+        self.train_accuracy = tf.keras.metrics.SparseCategoricalAccuracy(name='train_accuracy')
 
     def train_epoch(self):
         loop = tqdm(range(self.config.num_iter_per_epoch))
