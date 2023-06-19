@@ -15,12 +15,12 @@ class ExampleModel(Model):
 
 
 
-        self.x = tf.placeholder(tf.float32, shape=[None] + self.config.state_size)
-        self.y = tf.placeholder(tf.float32, shape=[None, 10])
+    def call(self, x):
+        x = self.conv1(tf.expand_dims(x, axis=-1))
+        x = self.flatten(x)
+        x = self.d1(x)
+        return self.d2(x)
 
-        # network architecture
-        d1 = tf.layers.dense(self.x, 512, activation=tf.nn.relu, name="dense1")
-        d2 = tf.layers.dense(d1, 10, name="dense2")
 
         with tf.name_scope("loss"):
             self.cross_entropy = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=self.y, logits=d2))
