@@ -1,10 +1,15 @@
-from base.base_model import BaseModel
 import tensorflow as tf
-
-
-class ExampleModel(BaseModel):
+from tensorflow.keras.layers import Dense, Flatten, Conv2D
+from tensorflow.keras import Model
+class ExampleModel(Model):
     def __init__(self, config):
         super(ExampleModel, self).__init__(config)
+        self.config = config
+        # init the global step
+        self.init_global_step()
+        # init the epoch counter
+        self.init_cur_epoch()
+ 
         self.build_model()
         self.init_saver()
 
