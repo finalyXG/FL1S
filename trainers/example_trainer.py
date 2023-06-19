@@ -22,13 +22,15 @@ class ExampleTrainer(BaseTrain):
         loss = np.mean(losses)
         acc = np.mean(accs)
 
-        cur_it = self.model.global_step_tensor.eval(self.sess)
+        cur_it = self.model.global_step_tensor.numpy()
         summaries_dict = {
             'loss': loss,
             'acc': acc,
         }
-        self.logger.summarize(cur_it, summaries_dict=summaries_dict)
-        self.model.save(self.sess)
+        print("loss::::",loss)
+        print("acc::::",acc)
+        # self.logger.summarize(cur_it, summaries_dict=summaries_dict)
+        self.model.save()
 
     def train_step(self):
         batch_x, batch_y = next(self.data.next_batch(self.config.batch_size))
