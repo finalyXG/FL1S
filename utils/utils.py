@@ -9,4 +9,5 @@ def get_args():
         default='None',
         help='The Configuration file')
     args = argparser.parse_args()
+    args.config = 'configs/example.json'
     return args
