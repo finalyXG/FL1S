@@ -1,15 +1,21 @@
+from typing import Any
 import tensorflow as tf
 
-
 class BaseTrain:
-    def __init__(self, sess, model, data, config, logger):
+    def __init__(self, model, data, config):
         self.model = model
-        self.logger = logger
+        # self.logger = logger
         self.config = config
-        self.sess = sess
+        # self.sess = sess
         self.data = data
-        self.init = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
-        self.sess.run(self.init)
+        # self.init = None
+        # self.init = tf.group(tf.compat.v1.global_variables_initializer(), tf.compat.v1.local_variables_initializer())
+    
+    # @tf.function
+    def __call__(self):
+        if self.init is None:
+            self.init = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
+        return self.init
 
     def train(self):
         for cur_epoch in range(self.model.cur_epoch_tensor.eval(self.sess), self.config.num_epochs + 1, 1):
