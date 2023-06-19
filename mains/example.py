@@ -23,18 +23,25 @@ def main():
     # create the experiments dirs
     create_dirs([config.summary_dir, config.checkpoint_dir])
     # create tensorflow session
-    sess = tf.Session()
+
+    # sess = tf.Session()
+
     # create your data generator
     data = DataGenerator(config)
-    
+
     # create an instance of the model you want
     model = ExampleModel(config)
+
     # create tensorboard logger
-    logger = Logger(sess, config)
+    # logger = Logger(sess, config)
+
     # create trainer and pass all the previous components to it
-    trainer = ExampleTrainer(sess, model, data, config, logger)
+    # trainer = ExampleTrainer(sess,model, data, config) #, logger
+    trainer = ExampleTrainer(model, data, config)
+ 
     #load model if exists
-    model.load(sess)
+    model.load()
+
     # here you train your model
     trainer.train()
 
