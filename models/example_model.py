@@ -13,8 +13,7 @@ class ExampleModel(Model):
         self.build_model()
         self.init_saver()
 
-    def build_model(self):
-        self.is_training = tf.placeholder(tf.bool)
+
 
         self.x = tf.placeholder(tf.float32, shape=[None] + self.config.state_size)
         self.y = tf.placeholder(tf.float32, shape=[None, 10])
