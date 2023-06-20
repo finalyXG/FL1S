@@ -11,11 +11,9 @@ class DataGenerator:
 
         mnist = tf.keras.datasets.mnist
 
-        (x_train, y_train), (x_test, y_test) = mnist.load_data()
-        x_train, x_test = x_train / 255.0, x_test / 255.0
-        self.input = np.concatenate((x_train , x_test),axis=0)
-        print('-- input shape:',self.input.shape)
-        self.y = np.concatenate((y_train , y_test),axis=0)
+        (self.input, self.y), (_, __) = mnist.load_data()
+        self.input = self.input.reshape(self.input.shape[0], 28, 28, 1).astype('float32')
+        self.input = (self.input - 127.5) / 127.5  # Normalize the images to [-1, 1]
 
     def next_batch(self, batch_size):
         idx = np.random.choice(500, batch_size)
