@@ -2,8 +2,9 @@ from typing import Any
 import tensorflow as tf
 
 class BaseTrain:
-    def __init__(self, model, data, config):
-        self.model = model
+    def __init__(self, data, discriminator, generator, config):
+        self.discriminator = discriminator
+        self.generator = generator
         # self.logger = logger
         self.config = config
         # self.sess = sess
