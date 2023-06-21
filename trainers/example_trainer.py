@@ -29,23 +29,21 @@ class Trainer(BaseTrain):
 
     def train_epoch(self):
         loop = tqdm(range(self.config.num_iter_per_epoch))
-        losses = []
-        accs = []
+        gen_losss = []
+        disc_losss = []
         for _ in loop:
-            loss, acc = self.train_step()
-            losses.append(loss)
-            accs.append(acc)
-        loss = np.mean(losses)
-        acc = np.mean(accs)
+            gen_loss, disc_loss = self.train_step()
+            gen_losss.append(gen_loss)
+            disc_losss.append(disc_loss)
+        gen_loss = np.mean(gen_losss)
+        disc_loss = np.mean(disc_losss)
 
-        cur_it = self.model.global_step_tensor.numpy()
-        summaries_dict = {
-            'loss': loss,
-            'acc': acc,
-        }
-        print("loss::::",loss)
-        print("acc::::",acc)
+        print("gen_loss::::",gen_loss)
+        print("disc_loss:::",disc_loss)
         # self.logger.summarize(cur_it, summaries_dict=summaries_dict)
+        self.discriminator.save()
+        self.generator.save()
+
     def generate_and_save_images(self,model, epoch, test_input):
         # Notice `training` is set to False.
         # This is so all layers run in inference mode (batchnorm).
