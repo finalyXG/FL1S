@@ -44,4 +44,36 @@ class BaseModel(Model):
         with tf.compat.v1.variable_scope('global_step'):
             self.global_step_tensor = tf.Variable(0, trainable=False, name='global_step')
 
+class Discriminator(BaseModel):
+    def __init__(self,config):
+        super(Discriminator, self).__init__(config=config)
+        
+        self.flatten = Flatten()
+        self.dense_1 = Dense(512, activation=tf.nn.leaky_relu )
+        self.dense_2 = Dense(256, activation=tf.nn.leaky_relu )
+        self.dense_3 = Dense(128, activation=tf.nn.leaky_relu)
+        self.dense_4 = Dense(1, activation='sigmoid')
 
+    def call(self, inputs):
+        x = self.flatten(inputs)
+        x = self.dense_1(x)
+        x = self.dense_2(x)
+        x = self.dense_3(x)
+        return self.dense_4(x)
+
+class Generator(BaseModel):
+    def __init__(self,config):
+        super(Generator, self).__init__(config=config)
+
+        self.dense_1 = Dense(128, activation=tf.nn.relu)
+        self.dense_2 = Dense(256, activation=tf.nn.relu)
+        self.dense_3 = Dense(512, activation=tf.nn.relu)
+        self.dense_4 = Dense(28 * 28)
+        self.reshape = Reshape((28, 28, 1))
+
+    def call(self, inputs):
+        x = self.dense_1(inputs)
+        x = self.dense_2(x)
+        x = self.dense_3(x)
+        x = self.dense_4(x)
+        return self.reshape(x)
