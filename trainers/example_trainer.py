@@ -56,19 +56,28 @@ class Trainer(BaseTrain):
     #                                  feed_dict=feed_dict)
     #     return loss, acc
     
+    # @tf.function: The below function is completely Tensor Code
+    # Good for optimization
     @tf.function
+    # Modify Train step for GAN
     def train_step(self):
-        images, labels = next(self.data.next_batch(self.config.batch_size))
-    
-        loss_object = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
+        images, _ = next(self.data.next_batch(self.config.batch_size))
+        noise = tf.random.normal([self.config.batch_size, self.latent_dim])
+        # Define the loss function
+        with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
+            generated_images = self.generator(noise, training=True)
+            real_output = self.discriminator(images, training=True)
+            fake_output = self.discriminator(generated_images, training=True)
+            
+            gen_loss = self.generator_loss(fake_output)
+            disc_loss = self.discriminator_loss(real_output, fake_output)
 
-        with tf.GradientTape() as tape:
-            # training=True is only needed if there are layers with different
-            # behavior during training versus inference (e.g. Dropout).
-            predictions = self.model(images, training=True)
-            loss = loss_object(labels, predictions)
+        # Calculate Gradient
+        grad_disc = disc_tape.gradient(disc_loss, self.discriminator.trainable_variables)
+        grad_gen = gen_tape.gradient(gen_loss, self.generator.trainable_variables)
 
-        gradients = tape.gradient(loss, self.model.trainable_variables)
-        self.optimizer.apply_gradients(zip(gradients, self.model.trainable_variables))
-
-        return self.train_loss(loss), self.train_accuracy(labels, predictions)
+        # Optimization Step: Update Weights & Learning Rate
+        self.disc_optimizer.apply_gradients(zip(grad_disc, self.discriminator.trainable_variables))
+        self.gen_optimizer.apply_gradients(zip(grad_gen, self.generator.trainable_variables))
+        
+        return gen_loss, disc_loss
