@@ -18,6 +18,34 @@ class Trainer(BaseTrain):
 
         self.loss_fn = tf.keras.losses.BinaryCrossentropy(from_logits=True)
 
+    def train(self):
+        checkpoint_dir = './training_checkpoints'
+        checkpoint_prefix = os.path.join(checkpoint_dir, "ckpt")
+        checkpoint = tf.train.Checkpoint(generator_optimizer=self.disc_optimizer,
+                                        discriminator_optimizer=self.gen_optimizer,
+                                        generator=self.generator,
+                                        discriminator=self.discriminator)
+        
+        for cur_epoch in range(self.generator.cur_epoch_tensor.numpy(), self.config.num_epochs + 1, 1):#range(self.model.cur_epoch_tensor.eval(self.sess), self.config.num_epochs + 1, 1):
+            self.train_epoch()
+            self.generator.cur_epoch_tensor.assign_add(1)
+            self.discriminator.cur_epoch_tensor.assign_add(1)
+            display.clear_output(wait=True)
+            print('cur_epoch',cur_epoch+1)
+            self.generate_and_save_images(self.generator,
+                            cur_epoch + 1,
+                            self.seed)
+            # Save the model every 15 epochs
+            if (cur_epoch + 1) % 15 == 0:
+                checkpoint.save(file_prefix = checkpoint_prefix)
+
+         # Generate after the final epoch
+        display.clear_output(wait=True)
+        self.generate_and_save_images(self.generator,
+                                self.config.num_epochs + 1,
+                                self.seed)
+        
+
     def discriminator_loss(self, real_output, fake_output):
         real_loss = self.loss_fn(tf.ones_like(real_output), real_output)
         fake_loss = self.loss_fn(tf.zeros_like(fake_output), fake_output)
