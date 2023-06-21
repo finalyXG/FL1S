@@ -1,15 +1,23 @@
 from base.base_train import BaseTrain
 from tqdm import tqdm
 import numpy as np
+import matplotlib.pyplot as plt
+from IPython import display
+import os
 import tensorflow as tf
+from tensorflow.keras import Model
 
-class ExampleTrainer(BaseTrain):
-    def __init__(self, model, data, config):#,logger):
-        super(ExampleTrainer, self).__init__( model, data, config)#,logger)
-        self.optimizer = tf.keras.optimizers.Adam()
-                
-        self.train_loss = tf.keras.metrics.Mean(name='train_loss')
-        self.train_accuracy = tf.keras.metrics.SparseCategoricalAccuracy(name='train_accuracy')
+class Trainer(BaseTrain):
+    def __init__(self, data, discriminator, generator, latent_dim, config):#,logger):
+        super(Trainer, self).__init__(data, discriminator, generator, config)#,logger)
+        self.latent_dim = latent_dim
+        self.seed = tf.random.normal([self.config.num_examples_to_generate, self.latent_dim])
+
+        self.disc_optimizer = tf.keras.optimizers.legacy.Adam(self.config.learning_rate)
+        self.gen_optimizer = tf.keras.optimizers.legacy.Adam(self.config.learning_rate)
+
+        self.loss_fn = tf.keras.losses.BinaryCrossentropy(from_logits=True)
+
 
     def train_epoch(self):
         loop = tqdm(range(self.config.num_iter_per_epoch))
