@@ -1,8 +1,8 @@
 import tensorflow as tf
 
 from data_loader.data_generator import DataGenerator
-from models.example_model import ExampleModel
-from trainers.example_trainer import ExampleTrainer
+from models.example_model import Discriminator,Generator
+from trainers.example_trainer import Trainer
 from utils.config import process_config
 from utils.dirs import create_dirs
 from utils.logger import Logger
@@ -30,17 +30,20 @@ def main():
     data = DataGenerator(config)
 
     # create an instance of the model you want
-    model = ExampleModel(config)
+    generator = Generator(config)
+    discriminator = Discriminator(config)
 
     # create tensorboard logger
     # logger = Logger(sess, config)
 
     # create trainer and pass all the previous components to it
     # trainer = ExampleTrainer(sess,model, data, config) #, logger
-    trainer = ExampleTrainer(model, data, config)
+    latent_dim = 100
+    trainer = Trainer( data, discriminator, generator,latent_dim, config)
  
     #load model if exists
-    model.load()
+    # generator.load()
+    # discriminator.load()
 
     # here you train your model
     trainer.train()
