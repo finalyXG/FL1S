@@ -46,15 +46,21 @@ class Trainer(BaseTrain):
         print("loss::::",loss)
         print("acc::::",acc)
         # self.logger.summarize(cur_it, summaries_dict=summaries_dict)
-        self.model.save()
+    def generate_and_save_images(self,model, epoch, test_input):
+        # Notice `training` is set to False.
+        # This is so all layers run in inference mode (batchnorm).
+        predictions = model(test_input, training=False)
 
-    # def train_step(self):
-    #     batch_x, batch_y = next(self.data.next_batch(self.config.batch_size))
-    #     feed_dict = {self.model.x: batch_x, self.model.y: batch_y, self.model.is_training: True}
-        
-    #     _, loss, acc = self.sess.run([self.model.train_step, self.model.cross_entropy, self.model.accuracy],
-    #                                  feed_dict=feed_dict)
-    #     return loss, acc
+        fig = plt.figure(figsize=(4, 4))
+
+        for i in range(predictions.shape[0]):
+            plt.subplot(4, 4, i+1)
+            plt.imshow(predictions[i, :, :, 0] * 127.5 + 127.5, cmap='gray')
+            plt.axis('off')
+
+        plt.savefig('./generate_img/image_at_epoch_{:04d}.png'.format(epoch))
+        plt.close()
+        # plt.show()
     
     # @tf.function: The below function is completely Tensor Code
     # Good for optimization
