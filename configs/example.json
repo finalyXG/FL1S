@@ -3,7 +3,10 @@
   "num_epochs": 10,
   "num_iter_per_epoch": 10,
   "learning_rate": 0.001,
-  "batch_size": 16,
+  "batch_size": 256,
+  "num_examples_to_generate":16,
+  "buffer_size":5000,
+  "latent_dim": 10,
   "state_size": [784],
   "max_to_keep":5
 }
