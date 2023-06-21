@@ -18,6 +18,14 @@ class Trainer(BaseTrain):
 
         self.loss_fn = tf.keras.losses.BinaryCrossentropy(from_logits=True)
 
+    def discriminator_loss(self, real_output, fake_output):
+        real_loss = self.loss_fn(tf.ones_like(real_output), real_output)
+        fake_loss = self.loss_fn(tf.zeros_like(fake_output), fake_output)
+        total_loss = real_loss + fake_loss
+        return total_loss
+
+    def generator_loss(self, fake_output):
+        return self.loss_fn(tf.ones_like(fake_output), fake_output)
 
     def train_epoch(self):
         loop = tqdm(range(self.config.num_iter_per_epoch))
