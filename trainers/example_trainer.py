@@ -16,7 +16,7 @@ class Trainer(BaseTrain):
         self.disc_optimizer = tf.keras.optimizers.legacy.Adam(self.config.learning_rate)
         self.gen_optimizer = tf.keras.optimizers.legacy.Adam(self.config.learning_rate)
 
-        self.loss_fn = tf.keras.losses.BinaryCrossentropy(from_logits=True)
+        self.loss_fn = tf.keras.losses.BinaryCrossentropy(from_logits=False)
 
     def train(self):
         checkpoint_dir = './training_checkpoints'
