@@ -35,6 +35,8 @@ class Trainer(BaseTrain):
             self.generate_and_save_images(self.generator,
                             cur_epoch + 1,
                             self.seed)
+            for(X_test, Y_test) in self.data.test_batched:
+                self.test_step(X_test, Y_test)
             # Save the model every 15 epochs
             if (cur_epoch + 1) % 15 == 0:
                 checkpoint.save(file_prefix = checkpoint_prefix)
@@ -112,4 +114,19 @@ class Trainer(BaseTrain):
         self.disc_optimizer.apply_gradients(zip(grad_disc, self.discriminator.trainable_variables))
         self.gen_optimizer.apply_gradients(zip(grad_gen, self.generator.trainable_variables))
         
-        return gen_loss, disc_loss
+    @tf.function
+    def test_step(self,images, labels):
+        noise = tf.random.normal([self.config.batch_size, self.latent_dim])
+
+        generated_images = self.generator(noise, training=False)
+        real_output = self.discriminator(images, training=False)
+        fake_output = self.discriminator(generated_images, training=False)
+        
+        gen_loss = self.generator_loss(fake_output)
+        disc_loss = self.discriminator_loss(real_output, fake_output)
+
+        #produce disc labels and output
+        labels = tf.concat([tf.ones_like(real_output), tf.zeros_like(fake_output)], 0)
+        output = tf.concat([real_output ,fake_output],0)
+
+        return self.gen_test_loss(gen_loss), self.disc_test_loss(disc_loss),self.disc_test_acc(labels,output)
