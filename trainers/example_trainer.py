@@ -1,4 +1,3 @@
-from base.base_train import BaseTrain
 from tqdm import tqdm
 import numpy as np
 import matplotlib.pyplot as plt
@@ -6,6 +5,12 @@ from IPython import display
 import os
 import tensorflow as tf
 from tensorflow.keras import Model
+class Trainer:
+    def __init__(self, data, discriminator, generator, latent_dim, config):
+        self.discriminator = discriminator
+        self.generator = generator
+        self.config = config
+        self.data = data
 
 class Trainer(BaseTrain):
     def __init__(self, data, discriminator, generator, latent_dim, config):#,logger):
@@ -16,8 +21,12 @@ class Trainer(BaseTrain):
         self.disc_optimizer = tf.keras.optimizers.legacy.Adam(self.config.learning_rate)
         self.gen_optimizer = tf.keras.optimizers.legacy.Adam(self.config.learning_rate)
 
-        self.loss_fn = tf.keras.losses.BinaryCrossentropy(from_logits=False)
 
+    def __call__(self):
+        if self.init is None:
+            self.init = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
+        return self.init
+    
     def train(self):
         checkpoint_dir = './training_checkpoints'
         checkpoint_prefix = os.path.join(checkpoint_dir, "ckpt")
