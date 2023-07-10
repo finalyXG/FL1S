@@ -15,7 +15,8 @@ class DataGenerator:
         self.test_x = (self.test_x - 127.5) / 127.5  # Normalize the images to [-1, 1]
 
         self.test_batched = tf.data.Dataset.from_tensor_slices((self.test_x, self.test_y)).batch(self.config.batch_size)
-
+        self.train_batched = tf.data.Dataset.from_tensor_slices(
+            (self.input , self.y)).shuffle(10000).batch(self.config.batch_size)
 
     def next_batch(self, batch_size):
         idx = np.random.choice(len(self.y), batch_size)

@@ -54,8 +54,9 @@ class Trainer:
                                         discriminator=self.discriminator)
 
         for cur_epoch in range(self.generator.cur_epoch_tensor.numpy(), self.config.num_epochs + 1, 1):
-            for _ in range(self.config.num_iter_per_epoch):
-                self.train_step()
+            
+            for (x,y) in self.data.train_batched:
+                self.train_step(x,y)
             with self.train_summary_writer.as_default():
                 tf.summary.scalar('disc_loss', self.disc_train_loss.result(), step=cur_epoch)
                 tf.summary.scalar('gen_loss', self.gen_train_loss.result(), step=cur_epoch)
@@ -145,8 +146,8 @@ class Trainer:
     # Good for optimization
     @tf.function
     # Modify Train step for GAN
-    def train_step(self):
-        images, _ = next(self.data.next_batch(self.config.batch_size))
+    def train_step(self,images, labels):
+        # images, _ = next(self.data.next_batch(self.config.batch_size))
         noise = tf.random.normal([self.config.batch_size, self.latent_dim])
         # Define the loss function
         with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
