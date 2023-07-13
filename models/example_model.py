@@ -52,7 +52,7 @@ class Discriminator(BaseModel):
         self.dense_1 = Dense(512, activation=tf.nn.leaky_relu )
         self.dense_2 = Dense(256, activation=tf.nn.leaky_relu )
         self.dense_3 = Dense(128, activation=tf.nn.leaky_relu)
-        self.dense_4 = Dense(1, activation='sigmoid')
+        self.dense_4 = Dense(1)#, activation='sigmoid'
 
     def call(self, inputs):
         x = self.flatten(inputs)
