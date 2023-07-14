@@ -79,11 +79,14 @@ class Trainer:
                                         discriminator_optimizer=self.gen_optimizer,
                                         generator=self.generator,
                                         discriminator=self.discriminator)
+        #read latest_checkpoint
+        # checkpoint.restore(tf.train.latest_checkpoint(checkpoint_dir)) 
 
         for cur_epoch in range(self.generator.cur_epoch_tensor.numpy(), self.config.num_epochs + 1, 1):
-            
-            for (x,y) in self.data.train_batched:
-                self.train_step(x,y)
+            # train 
+            for _ in range(self.config.num_iter_per_epoch):
+                self.train_step()
+            # recoed training result on tensorboard
             with self.train_summary_writer.as_default():
                 tf.summary.scalar('disc_loss', self.disc_train_loss.result(), step=cur_epoch)
                 tf.summary.scalar('gen_loss', self.gen_train_loss.result(), step=cur_epoch)
@@ -94,19 +97,30 @@ class Trainer:
             display.clear_output(wait=True)
             print('cur_epoch',cur_epoch+1)
 
+            #get generator output img
             img = self.generate_and_save_images(self.generator,
                             cur_epoch + 1,
                             self.seed)
-            # Convert to image and log
-            with self.file_writer.as_default():
-                tf.summary.image("Generate data", img, step=cur_epoch)
             
+            # show img on tensorboard
+            with self.generator_img_writer.as_default():
+                tf.summary.image("Generate data", img, step=cur_epoch)
+
+            fake_img = self.generator(self.tsne_seed)
+            compare_input = tf.concat([self.data.test_x[:self.config.test_sample_num],fake_img],0)
+            fake_real_img_flattened = tf.reshape(compare_input,[2*self.config.test_sample_num,-1])
+            with self.compare_fake_real_img_writer.as_default():
+                tf.summary.image("compare fake real img", self.generate_tsne_images(fake_real_img_flattened), step=cur_epoch)
+
+            #test
             for(X_test, Y_test) in self.data.test_batched:
-                self.test_step(X_test, Y_test)
+                self.test_step(X_test,Y_test)
+            # recoed test result on tensorboard
             with self.test_summary_writer.as_default():
                 tf.summary.scalar('disc_loss', self.disc_test_loss.result(), step=cur_epoch)
                 tf.summary.scalar('gen_loss', self.gen_test_loss.result(), step=cur_epoch)
                 tf.summary.scalar('disc_acc', self.disc_test_acc.result(), step=cur_epoch)
+            #print
             template = 'Epoch {}, Generator Loss: {}, Discriminator Loss: {}, Discriminator Accuracy: {}, Generator Test Loss: {}, Discriminator Test Loss: {}, Discriminator Test Accuracy: {}'
             print (template.format(cur_epoch+1,
                                     self.gen_train_loss.result(), 
@@ -123,18 +137,42 @@ class Trainer:
             self.disc_test_loss.reset_states()
             self.disc_train_acc.reset_states()
             self.disc_test_acc.reset_states()
-            # Save the model every 15 epochs
-            # if (cur_epoch + 1) % 15 == 0:
-            #     checkpoint.save(file_prefix = checkpoint_prefix)
-
-         # Generate after the final epoch
+            #Save the model every 50 epochs
+            if (cur_epoch + 1) % 50 == 0:
+                checkpoint.save(file_prefix = checkpoint_prefix)
+        # Generate after the final epoch
         display.clear_output(wait=True)
         img = self.generate_and_save_images(self.generator,
                                 self.config.num_epochs + 1,
                                 self.seed)
         
-        with self.file_writer.as_default():
+        with self.generator_img_writer.as_default():
             tf.summary.image("Generate data", img, step=self.config.num_epochs + 1)
+    
+    def generate_tsne_images(self,data,generator=False):
+        tsne = TSNE(n_components=2, verbose=1, random_state=123)
+        z = tsne.fit_transform(data)
+
+        df = pd.DataFrame()
+        df["comp-1"] = z[:,0]
+        df["comp-2"] = z[:,1]
+        buf = io.BytesIO()
+        if generator: #show generator output
+            sns.scatterplot(x="comp-1", y="comp-2",data=df)
+        else: #show discriminator output
+            df.loc[:self.config.test_sample_num,'y'] = 1
+            df.loc[self.config.test_sample_num:,'y'] = 0
+            sns.scatterplot(x="comp-1", y="comp-2", hue=df.y.tolist(),
+                            palette=sns.color_palette("hls", 2),
+                            data=df)
+        plt.savefig(buf, format='png')
+        plt.close()
+        buf.seek(0)
+        # Convert PNG buffer to TF image
+        image = tf.image.decode_png(buf.getvalue(), channels=4)
+        # Add the batch dimension
+        image = tf.expand_dims(image, 0)
+        return image
     
     def discriminator_loss(self, real_img, fake_img):
         real_loss = tf.reduce_mean(real_img)
