@@ -171,18 +171,34 @@ class Trainer:
     # Good for optimization
     @tf.function
     # Modify Train step for GAN
+    def train_step(self):
+        # Train the discriminator first.
+        images, labels = next(self.data.next_batch(self.config.batch_size))
+        for i in range(self.discriminator_extra_steps):
+            noise = tf.random.normal([self.config.batch_size, self.latent_dim])
+            with tf.GradientTape() as disc_tape:
+                generated_images = self.generator(noise, training=True)
+                real_output = self.discriminator(images, training=True)
+                fake_output = self.discriminator(generated_images, training=True)
                 disc_cost = self.discriminator_loss(real_output, fake_output)
                 # Calculate the gradient penalty
                 gp = self.gradient_penalty(images, generated_images)     
                 # Add the gradient penalty to the original discriminator loss
                 disc_loss = disc_cost + gp * self.gp_weight  
 
-        # Calculate Gradient
-        grad_disc = disc_tape.gradient(disc_loss, self.discriminator.trainable_variables)
+            # Calculate Gradient
+            grad_disc = disc_tape.gradient(disc_loss, self.discriminator.trainable_variables)
+            
+            self.disc_optimizer.apply_gradients(zip(grad_disc, self.discriminator.trainable_variables))
+        # Train the generator
+        # Get the latent vector
+        noise = tf.random.normal([self.config.batch_size, self.latent_dim])
+        with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
+            generated_images = self.generator(noise, training=True)
+            fake_output = self.discriminator(generated_images, training=True)
+            gen_loss = self.generator_loss(fake_output)
+           
         grad_gen = gen_tape.gradient(gen_loss, self.generator.trainable_variables)
-
-        # Optimization Step: Update Weights & Learning Rate
-        self.disc_optimizer.apply_gradients(zip(grad_disc, self.discriminator.trainable_variables))
         self.gen_optimizer.apply_gradients(zip(grad_gen, self.generator.trainable_variables))
         
         #produce disc labels and output
