@@ -29,8 +29,8 @@ class Trainer:
         self.disc_test_loss = tf.keras.metrics.Mean(name='disc_test_loss')
         self.gen_test_loss = tf.keras.metrics.Mean(name='gen_test_loss')
 
-        self.disc_train_acc =  tf.keras.metrics.SparseCategoricalAccuracy(name='train_accuracy')
-        self.disc_test_acc =  tf.keras.metrics.SparseCategoricalAccuracy(name='test_accuracy')
+        self.disc_train_acc =  tf.keras.metrics.CategoricalAccuracy(name='train_accuracy') # for 1 pair 1
+        self.disc_test_acc =  tf.keras.metrics.CategoricalAccuracy(name='test_accuracy')
         
         current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
         train_log_dir = 'logs/gradient_tape/' + current_time + '/train'
@@ -108,16 +108,14 @@ class Trainer:
         
         with self.file_writer.as_default():
             tf.summary.image("Generate data", img, step=self.config.num_epochs + 1)
-        
-    def discriminator_loss(self, real_output, fake_output):
-        real_loss = self.loss_fn(tf.ones_like(real_output), real_output)
-        fake_loss = self.loss_fn(tf.zeros_like(fake_output), fake_output)
-        total_loss = real_loss + fake_loss
-        return total_loss
+    
+    def discriminator_loss(self, real_img, fake_img):
+        real_loss = tf.reduce_mean(real_img)
+        fake_loss = tf.reduce_mean(fake_img)
+        return fake_loss - real_loss
 
-    def generator_loss(self, fake_output):
-        return self.loss_fn(tf.ones_like(fake_output), fake_output)
-
+    def generator_loss(self, fake_img):
+        return -tf.reduce_mean(fake_img)
 
     def generate_and_save_images(self,model, epoch, test_input):
         # Notice `training` is set to False.
@@ -170,7 +168,7 @@ class Trainer:
         labels = tf.concat([tf.ones_like(real_output), tf.zeros_like(fake_output)], 0)
         output = tf.concat([real_output ,fake_output],0)
    
-        return self.gen_train_loss(gen_loss), self.disc_train_loss(disc_loss),self.disc_train_acc(labels,output)
+        return self.gen_train_loss.update_state(gen_loss), self.disc_train_loss.update_state(disc_loss),self.disc_train_acc.update_state(labels,output)
 
     @tf.function
     def test_step(self,images, labels):
@@ -187,4 +185,4 @@ class Trainer:
         labels = tf.concat([tf.ones_like(real_output), tf.zeros_like(fake_output)], 0)
         output = tf.concat([real_output ,fake_output],0)
 
-        return self.gen_test_loss(gen_loss), self.disc_test_loss(disc_loss),self.disc_test_acc(labels,output)
+        return self.gen_test_loss.update_state(gen_loss), self.disc_test_loss.update_state(disc_loss),self.disc_test_acc.update_state(labels,output)
