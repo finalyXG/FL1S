@@ -3,23 +3,25 @@ import datetime
 import io
 import matplotlib.pyplot as plt
 import numpy as np
-import matplotlib.pyplot as plt
+import pandas as pd
 from IPython import display
 import os
 import tensorflow as tf
-from tensorflow.keras import Model
+import seaborn as sns
+from sklearn.manifold import TSNE
+
 class Trainer:
-    def __init__(self, data, discriminator, generator, latent_dim, config):
+    def __init__(self, data, discriminator, generator, config):
         self.discriminator = discriminator
         self.generator = generator
         self.config = config
         self.data = data
-
+        self.gp_weight = config.gp_weight
+        self.discriminator_extra_steps = config.discriminator_extra_steps
         self.img_save_path = "./generate_img"
-        self.latent_dim = latent_dim
+        self.latent_dim = config.latent_dim
         self.seed = tf.random.normal([self.config.num_examples_to_generate, self.latent_dim])
-        
-        self.loss_fn = tf.keras.losses.BinaryCrossentropy(from_logits=False)     
+        self.tsne_seed = tf.random.normal([self.config.test_sample_num, self.latent_dim])
         self.disc_optimizer = tf.keras.optimizers.legacy.Adam(self.config.learning_rate)
         self.gen_optimizer = tf.keras.optimizers.legacy.Adam(self.config.learning_rate)
 
@@ -35,16 +37,41 @@ class Trainer:
         current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
         train_log_dir = 'logs/gradient_tape/' + current_time + '/train'
         test_log_dir = 'logs/gradient_tape/' + current_time + '/test'
-        logdir = "logs/train_data/" + current_time
+        generator_img_logdir = "logs/train_data/" + current_time
+
         self.train_summary_writer = tf.summary.create_file_writer(train_log_dir)
         self.test_summary_writer = tf.summary.create_file_writer(test_log_dir)
-        self.file_writer = tf.summary.create_file_writer(logdir)
-
+        self.generator_img_writer = tf.summary.create_file_writer(generator_img_logdir)
+        self.compare_fake_real_img_writer = tf.summary.create_file_writer( "logs/compare_fake_real_img/" + current_time)
+   
     def __call__(self):
         if self.init is None:
             self.init = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
         return self.init
     
+    def gradient_penalty(self, real_images, fake_images):
+        """Calculates the gradient penalty.
+
+        This loss is calculated on an interpolated image
+        and added to the discriminator loss.
+        """
+        # Get the interpolated image
+        alpha = tf.random.normal([self.config.batch_size, 1, 1, 1], 0.0, 1.0)
+        diff = fake_images - real_images
+        interpolated = real_images + alpha * diff
+
+        with tf.GradientTape() as gp_tape:
+            gp_tape.watch(interpolated)
+            # 1. Get the discriminator output for this interpolated image.
+            pred = self.discriminator(interpolated, training=True)
+
+        # 2. Calculate the gradients w.r.t to this interpolated image.
+        grads = gp_tape.gradient(pred, [interpolated])[0]
+        # 3. Calculate the norm of the gradients.
+        norm = tf.sqrt(tf.reduce_sum(tf.square(grads), axis=[1, 2, 3]))
+        gp = tf.reduce_mean((norm - 1.0) ** 2)
+        return gp
+
     def train(self):
         checkpoint_dir = './training_checkpoints'
         checkpoint_prefix = os.path.join(checkpoint_dir, "ckpt")
@@ -144,17 +171,11 @@ class Trainer:
     # Good for optimization
     @tf.function
     # Modify Train step for GAN
-    def train_step(self,images, labels):
-        # images, _ = next(self.data.next_batch(self.config.batch_size))
-        noise = tf.random.normal([self.config.batch_size, self.latent_dim])
-        # Define the loss function
-        with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
-            generated_images = self.generator(noise, training=True)
-            real_output = self.discriminator(images, training=True)
-            fake_output = self.discriminator(generated_images, training=True)
-            
-            gen_loss = self.generator_loss(fake_output)
-            disc_loss = self.discriminator_loss(real_output, fake_output)
+                disc_cost = self.discriminator_loss(real_output, fake_output)
+                # Calculate the gradient penalty
+                gp = self.gradient_penalty(images, generated_images)     
+                # Add the gradient penalty to the original discriminator loss
+                disc_loss = disc_cost + gp * self.gp_weight  
 
         # Calculate Gradient
         grad_disc = disc_tape.gradient(disc_loss, self.discriminator.trainable_variables)
