@@ -1,11 +1,15 @@
 {
   "exp_name": "example",
   "num_epochs": 1000,
+  "train_sample_num":2000,
+  "test_sample_num":1000,
+  "gp_weight": 10.0,
+  "discriminator_extra_steps":3,
   "learning_rate": 0.001,
   "batch_size": 256,
   "num_examples_to_generate":16,
   "buffer_size":5000,
-  "latent_dim": 10,
+  "latent_dim": 128,
   "state_size": [784],
   "max_to_keep":5
 }
