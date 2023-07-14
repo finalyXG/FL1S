@@ -38,8 +38,8 @@ def main():
 
     # create trainer and pass all the previous components to it
     # trainer = ExampleTrainer(sess,model, data, config) #, logger
-    latent_dim = 100
-    trainer = Trainer( data, discriminator, generator,latent_dim, config)
+    
+    trainer = Trainer( data, discriminator, generator, config)
  
     #load model if exists
     # generator.load()
