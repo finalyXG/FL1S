@@ -54,7 +54,7 @@ class Trainer:
             self.init = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
         return self.init
     
-    def gradient_penalty(self, real_images, fake_images):
+    def gradient_penalty(self, real_images, fake_images,image_one_hot_labels):
         """Calculates the gradient penalty.
 
         This loss is calculated on an interpolated image
@@ -65,13 +65,15 @@ class Trainer:
         diff = fake_images - real_images
         interpolated = real_images + alpha * diff
 
+        image_and_labels = tf.concat([interpolated, image_one_hot_labels], -1)
+        
         with tf.GradientTape() as gp_tape:
-            gp_tape.watch(interpolated)
+            gp_tape.watch(image_and_labels)
             # 1. Get the discriminator output for this interpolated image.
-            pred = self.discriminator(interpolated, training=True)
+            pred = self.discriminator(image_and_labels, training=True)
 
         # 2. Calculate the gradients w.r.t to this interpolated image.
-        grads = gp_tape.gradient(pred, [interpolated])[0]
+        grads = gp_tape.gradient(pred, [image_and_labels])[0]
         # 3. Calculate the norm of the gradients.
         norm = tf.sqrt(tf.reduce_sum(tf.square(grads), axis=[1, 2, 3]))
         gp = tf.reduce_mean((norm - 1.0) ** 2)
@@ -86,7 +88,6 @@ class Trainer:
                                         discriminator=self.discriminator)
         #read latest_checkpoint
         # checkpoint.restore(tf.train.latest_checkpoint(checkpoint_dir)) 
-
         for cur_epoch in range(self.generator.cur_epoch_tensor.numpy(), self.config.num_epochs + 1, 1):
             # train 
             for _ in range(self.config.num_iter_per_epoch):
