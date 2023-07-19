@@ -16,12 +16,17 @@ class Trainer:
         self.generator = generator
         self.config = config
         self.data = data
+        self.image_size = config.image_size
         self.gp_weight = config.gp_weight
+        self.num_classes = config.num_classes
         self.discriminator_extra_steps = config.discriminator_extra_steps
         self.img_save_path = "./generate_img"
         self.latent_dim = config.latent_dim
-        self.seed = tf.random.normal([self.config.num_examples_to_generate, self.latent_dim])
-        self.tsne_seed = tf.random.normal([self.config.test_sample_num, self.latent_dim])
+        noise = tf.random.normal([self.config.num_classes, self.latent_dim])
+        seed_labels = tf.keras.utils.to_categorical(range(self.config.num_classes),self.config.num_classes)
+        self.seed = tf.concat(
+            [noise, seed_labels], axis=1
+            )
         self.disc_optimizer = tf.keras.optimizers.legacy.Adam(self.config.learning_rate)
         self.gen_optimizer = tf.keras.optimizers.legacy.Adam(self.config.learning_rate)
 

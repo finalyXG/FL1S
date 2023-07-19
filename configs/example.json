@@ -3,6 +3,7 @@
   "num_epochs": 1000,
   "num_iter_per_epoch":10,
   "test_sample_num":1000,
+  "image_size":28,
   "gp_weight": 10.0,
   "discriminator_extra_steps":3,
   "learning_rate": 0.001,
@@ -11,5 +12,6 @@
   "buffer_size":5000,
   "latent_dim": 128,
   "state_size": [784],
-  "max_to_keep":5
+  "max_to_keep":5,
+  "num_classes":10
 }
