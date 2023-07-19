@@ -1,7 +1,7 @@
 import tensorflow as tf
 
 from data_loader.data_generator import DataGenerator
-from models.example_model import Discriminator,Generator
+from models.example_model import C_Discriminator,C_Generator,AC_Discriminator,AC_Generator
 from trainers.example_trainer import Trainer
 from utils.config import process_config
 from utils.dirs import create_dirs
@@ -22,29 +22,17 @@ def main():
 
     # create the experiments dirs
     create_dirs([config.summary_dir, config.checkpoint_dir])
-    # create tensorflow session
-
-    # sess = tf.Session()
 
     # create your data generator
     data = DataGenerator(config)
 
     # create an instance of the model you want
-    generator = Generator(config)
-    discriminator = Discriminator(config)
-
-    # create tensorboard logger
-    # logger = Logger(sess, config)
+    generator = C_Generator(config)
+    discriminator = C_Discriminator(config)
 
     # create trainer and pass all the previous components to it
-    # trainer = ExampleTrainer(sess,model, data, config) #, logger
-    
     trainer = Trainer( data, discriminator, generator, config)
  
-    #load model if exists
-    # generator.load()
-    # discriminator.load()
-
     # here you train your model
     trainer.train()
 
