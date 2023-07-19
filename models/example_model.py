@@ -1,5 +1,5 @@
 import tensorflow as tf
-from tensorflow.keras.layers import Dense, Flatten,LeakyReLU, Conv2DTranspose,Dropout, Conv2D, Reshape, BatchNormalization
+from tensorflow.keras.layers import Dense, Flatten,Multiply,LeakyReLU, Embedding,Dropout, Conv2D, Reshape, BatchNormalization
 from tensorflow.keras import Model
 
 class BaseModel(Model):
@@ -10,7 +10,7 @@ class BaseModel(Model):
         self.init_global_step()
         # init the epoch counter
         self.init_cur_epoch()
- 
+    
         # self.build_model()
         self.init_saver()
 
@@ -44,10 +44,38 @@ class BaseModel(Model):
         with tf.compat.v1.variable_scope('global_step'):
             self.global_step_tensor = tf.Variable(0, trainable=False, name='global_step')
 
-class Discriminator(BaseModel):
+class C_Discriminator(BaseModel):
     def __init__(self,config):
-        super(Discriminator, self).__init__(config=config)
-        
+        super(C_Discriminator, self).__init__(config=config)
+        self.flatten = Flatten()
+        self.dense_1 = Dense(512, activation=tf.nn.leaky_relu )
+        self.dense_2 = Dense(256, activation=tf.nn.leaky_relu )
+        self.dense_3 = Dense(128, activation=tf.nn.leaky_relu)
+        self.dense_4 = Dense(1)
+
+    def call(self, inputs):
+        x = self.flatten(inputs)
+        x = self.dense_1(x)
+        x = self.dense_2(x)
+        x = self.dense_3(x)
+        return self.dense_4(x)
+
+class C_Generator(BaseModel):
+    def __init__(self,config):
+        super(C_Generator, self).__init__(config=config)
+        self.dense_1 = Dense(256, activation=tf.nn.relu)
+        self.dense_2 = Dense(512, activation=tf.nn.relu)
+        self.dense_3 = Dense(1024, activation=tf.nn.relu)
+        self.dense_4 = Dense(28 * 28)
+        self.reshape = Reshape((28, 28, 1))
+
+    def call(self, inputs):
+        x = self.dense_1(inputs)
+        x = self.dense_2(x)
+        x = self.dense_3(x)
+        x = self.dense_4(x)
+        return self.reshape(x)
+    
         self.flatten = Flatten()
         self.dense_1 = Dense(512, activation=tf.nn.leaky_relu )
         self.dense_2 = Dense(256, activation=tf.nn.leaky_relu )
