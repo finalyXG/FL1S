@@ -216,53 +216,109 @@ class Trainer:
     # Modify Train step for GAN
     def train_step(self):
         # Train the discriminator first.
-        images, labels = next(self.data.next_batch(self.config.batch_size))
+        real_images, one_hot_labels = next(self.data.next_batch(self.config.batch_size))
+        loss_fn = tf.keras.losses.BinaryCrossentropy(from_logits=True)
+        # Add dummy dimensions to the labels so that they can be concatenated with
+        # the images. This is for the discriminator.
+        image_one_hot_labels = one_hot_labels[:, :, None, None]
+        image_one_hot_labels = tf.repeat(
+            image_one_hot_labels, repeats=[self.image_size * self.image_size]
+        )
+        image_one_hot_labels = tf.reshape(
+            image_one_hot_labels, (-1, self.image_size, self.image_size, self.num_classes)
+        )
+        
         for i in range(self.discriminator_extra_steps):
             noise = tf.random.normal([self.config.batch_size, self.latent_dim])
+            random_vector_labels = tf.concat(
+            [noise, one_hot_labels], axis=1
+            )
             with tf.GradientTape() as disc_tape:
-                generated_images = self.generator(noise, training=True)
-                real_output = self.discriminator(images, training=True)
-                fake_output = self.discriminator(generated_images, training=True)
-                disc_cost = self.discriminator_loss(real_output, fake_output)
+                generated_images = self.generator(random_vector_labels, training=True)
+                # Combine them with real images. Note that we are concatenating the labels
+                # with these images here.
+                fake_image_and_labels = tf.concat([generated_images, image_one_hot_labels], -1)
+                real_image_and_labels = tf.concat([real_images, image_one_hot_labels], -1)
+                combined_images = tf.concat(
+                    [fake_image_and_labels, real_image_and_labels], axis=0
+                )
+
+                # Assemble labels discriminating real from fake images.
+                labels = tf.concat(  #set real img classify to zero
+                    [tf.ones((self.config.batch_size, 1)), tf.zeros((self.config.batch_size, 1))], axis=0
+                )
+                predictions = self.discriminator(combined_images, training=True)
+                
+                disc_cost = loss_fn(labels, predictions)
                 # Calculate the gradient penalty
-                gp = self.gradient_penalty(images, generated_images)     
+                gp = self.gradient_penalty(real_images, generated_images,image_one_hot_labels)     
                 # Add the gradient penalty to the original discriminator loss
                 disc_loss = disc_cost + gp * self.gp_weight  
 
             # Calculate Gradient
             grad_disc = disc_tape.gradient(disc_loss, self.discriminator.trainable_variables)
-            
             self.disc_optimizer.apply_gradients(zip(grad_disc, self.discriminator.trainable_variables))
+        
         # Train the generator
         # Get the latent vector
         noise = tf.random.normal([self.config.batch_size, self.latent_dim])
+        random_vector_labels = tf.concat(
+            [noise, one_hot_labels], axis=1
+            )
+        # Assemble labels that say "all real images". 
+        misleading_labels = tf.zeros((self.config.batch_size, 1))
+
         with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
-            generated_images = self.generator(noise, training=True)
-            fake_output = self.discriminator(generated_images, training=True)
-            gen_loss = self.generator_loss(fake_output)
+            generated_images = self.generator(random_vector_labels, training=True)
+            fake_image_and_labels = tf.concat([generated_images, image_one_hot_labels], -1)
+            fake_output = self.discriminator(fake_image_and_labels, training=True)
+            gen_loss = loss_fn(misleading_labels, fake_output) #lead classify to 
            
         grad_gen = gen_tape.gradient(gen_loss, self.generator.trainable_variables)
         self.gen_optimizer.apply_gradients(zip(grad_gen, self.generator.trainable_variables))
         
-        #produce disc labels and output
-        labels = tf.concat([tf.ones_like(real_output), tf.zeros_like(fake_output)], 0)
-        output = tf.concat([real_output ,fake_output],0)
-   
-        return self.gen_train_loss.update_state(gen_loss), self.disc_train_loss.update_state(disc_loss),self.disc_train_acc.update_state(labels,output)
+        return self.gen_train_loss.update_state(gen_loss), self.disc_train_loss.update_state(disc_loss),self.disc_train_acc.update_state(labels,predictions)
 
     @tf.function
-    def test_step(self,images, labels):
+    def test_step(self,real_images, one_hot_labels):
         noise = tf.random.normal([self.config.batch_size, self.latent_dim])
-
-        generated_images = self.generator(noise, training=False)
-        real_output = self.discriminator(images, training=False)
-        fake_output = self.discriminator(generated_images, training=False)
+        random_vector_labels = tf.concat(
+            [noise, one_hot_labels], axis=1
+            )
         
-        gen_loss = self.generator_loss(fake_output)
-        disc_loss = self.discriminator_loss(real_output, fake_output)
+        loss_fn = tf.keras.losses.BinaryCrossentropy(from_logits=True)
+        # Add dummy dimensions to the labels so that they can be concatenated with
+        # the images. This is for the discriminator.
+        image_one_hot_labels = one_hot_labels[:, :, None, None]
+        image_one_hot_labels = tf.repeat(
+            image_one_hot_labels, repeats=[self.image_size * self.image_size]
+        )
+        image_one_hot_labels = tf.reshape(
+            image_one_hot_labels, (-1, self.image_size, self.image_size, self.num_classes)
+        )
 
-        #produce disc labels and output
-        labels = tf.concat([tf.ones_like(real_output), tf.zeros_like(fake_output)], 0)
-        output = tf.concat([real_output ,fake_output],0)
+        generated_images = self.generator(random_vector_labels, training=False)
+        fake_image_and_labels = tf.concat([generated_images, image_one_hot_labels], -1)
+        real_image_and_labels = tf.concat([real_images, image_one_hot_labels], -1)
+        combined_images = tf.concat(
+            [fake_image_and_labels, real_image_and_labels], axis=0
+        )
 
-        return self.gen_test_loss.update_state(gen_loss), self.disc_test_loss.update_state(disc_loss),self.disc_test_acc.update_state(labels,output)
+        # Assemble labels discriminating real from fake images.
+        labels = tf.concat(  #set real img classify to zero
+            [tf.ones((self.config.batch_size, 1)), tf.zeros((self.config.batch_size, 1))], axis=0
+        )
+        
+        predictions_combined_images = self.discriminator(combined_images, training=False)
+        fake_output = self.discriminator(fake_image_and_labels, training=False)
+        misleading_labels = tf.zeros((self.config.batch_size, 1))
+
+        gen_loss = loss_fn(misleading_labels,fake_output)
+
+        disc_cost = loss_fn(predictions_combined_images, labels)
+        # Calculate the gradient penalty
+        gp = self.gradient_penalty(real_images, generated_images,image_one_hot_labels)     
+        # Add the gradient penalty to the original discriminator loss
+        disc_loss = disc_cost + gp * self.gp_weight  
+
+        return self.gen_test_loss.update_state(gen_loss), self.disc_test_loss.update_state(disc_loss),self.disc_test_acc.update_state(labels,predictions_combined_images)
