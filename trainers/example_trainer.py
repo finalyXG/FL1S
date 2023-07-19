@@ -111,12 +111,9 @@ class Trainer:
             # show img on tensorboard
             with self.generator_img_writer.as_default():
                 tf.summary.image("Generate data", img, step=cur_epoch)
-
-            fake_img = self.generator(self.tsne_seed)
-            compare_input = tf.concat([self.data.test_x[:self.config.test_sample_num],fake_img],0)
-            fake_real_img_flattened = tf.reshape(compare_input,[2*self.config.test_sample_num,-1])
+            
             with self.compare_fake_real_img_writer.as_default():
-                tf.summary.image("compare fake real img", self.generate_tsne_images(fake_real_img_flattened), step=cur_epoch)
+                tf.summary.image("compare fake real img", self.generate_tsne_images(), step=cur_epoch)
 
             #test
             for(X_test, Y_test) in self.data.test_batched:
@@ -155,7 +152,15 @@ class Trainer:
         with self.generator_img_writer.as_default():
             tf.summary.image("Generate data", img, step=self.config.num_epochs + 1)
     
-    def generate_tsne_images(self,data,generator=False):
+    def generate_tsne_images(self):
+        noise = tf.random.normal([self.config.test_sample_num, self.latent_dim])
+        seed = tf.concat(
+            [noise, self.data.test_y[:self.config.test_sample_num]], axis=1
+            )
+        fake_img = self.generator(seed)
+        compare_input = tf.concat([self.data.test_x[:self.config.test_sample_num],fake_img],0)
+        data = tf.reshape(compare_input,[2*self.config.test_sample_num,-1])
+
         tsne = TSNE(n_components=2, verbose=1, random_state=123)
         z = tsne.fit_transform(data)
 
@@ -163,14 +168,15 @@ class Trainer:
         df["comp-1"] = z[:,0]
         df["comp-2"] = z[:,1]
         buf = io.BytesIO()
-        if generator: #show generator output
-            sns.scatterplot(x="comp-1", y="comp-2",data=df)
-        else: #show discriminator output
-            df.loc[:self.config.test_sample_num,'y'] = 1
-            df.loc[self.config.test_sample_num:,'y'] = 0
-            sns.scatterplot(x="comp-1", y="comp-2", hue=df.y.tolist(),
-                            palette=sns.color_palette("hls", 2),
-                            data=df)
+        #show discriminator output
+        df.loc[:self.config.test_sample_num-1,'y'] = "real"
+        df.loc[self.config.test_sample_num:,'y'] = "fake"
+
+        df.loc[:self.config.test_sample_num-1,"classes"] = self.data._test_y[:self.config.test_sample_num] #_test_y using 0-9 lable
+        df.loc[self.config.test_sample_num:,"classes"] = self.data._test_y[:self.config.test_sample_num]
+        sns.scatterplot(x="comp-1", y="comp-2", hue=df.classes.tolist(), style=df.y.tolist(),
+                        palette=sns.color_palette("hls", 10),
+                        data=df)
         plt.savefig(buf, format='png')
         plt.close()
         buf.seek(0)
@@ -195,10 +201,10 @@ class Trainer:
         # Save the plot to a PNG in memory.
         buf = io.BytesIO()
 
-        fig = plt.figure(figsize=(4, 4))
+        fig = plt.figure(figsize=(3, 4))
 
         for i in range(predictions.shape[0]):
-            plt.subplot(4, 4, i+1)
+            plt.subplot(3, 4, i+1)
             plt.imshow(predictions[i, :, :, 0] * 127.5 + 127.5, cmap='gray')
             plt.axis('off')
 
