@@ -329,10 +329,12 @@ class Trainer:
     def generate_tsne_images(self):
         noise = tf.random.normal([self.config.test_sample_num, self.latent_dim])
         seed = tf.concat(
-            [noise, self.data.test_y[:self.config.test_sample_num]], axis=1
+            [noise, self.test_y[:self.config.test_sample_num]], axis=1
             )
-        fake_img = self.generator(seed)
-        compare_input = tf.concat([self.data.test_x[:self.config.test_sample_num],fake_img],0)
+        fake_features = self.generator(seed)
+        real_features = self.cls.get_features(self.test_x[:self.config.test_sample_num])
+
+        compare_input = tf.concat([real_features,fake_features],0)
         data = tf.reshape(compare_input,[2*self.config.test_sample_num,-1])
 
         tsne = TSNE(n_components=2, verbose=1, random_state=123)
@@ -345,9 +347,10 @@ class Trainer:
         #show discriminator output
         df.loc[:self.config.test_sample_num-1,'y'] = "real"
         df.loc[self.config.test_sample_num:,'y'] = "fake"
-
-        df.loc[:self.config.test_sample_num-1,"classes"] = self.data._test_y[:self.config.test_sample_num] #_test_y using 0-9 lable
-        df.loc[self.config.test_sample_num:,"classes"] = self.data._test_y[:self.config.test_sample_num]
+        #transfor one_hot to interge
+        labels = np.argmax(self.test_y[:self.config.test_sample_num], axis=1)
+        df.loc[:self.config.test_sample_num-1,"classes"] = labels 
+        df.loc[self.config.test_sample_num:,"classes"] = labels
         sns.scatterplot(x="comp-1", y="comp-2", hue=df.classes.tolist(), style=df.y.tolist(),
                         palette=sns.color_palette("hls", 10),
                         data=df)
