@@ -295,6 +295,13 @@ class Trainer:
         
         return self.disc_test_loss.result(), self.gen_test_loss.result(), self.generate_fake_features()
     
+    def generate_fake_features(self):
+        noise = tf.random.normal([self.config.test_feature_num, self.latent_dim])
+        seed = tf.concat(
+            [noise, self.all_test_y[:self.config.test_feature_num]], axis=1
+            )
+        fake_features = self.generator(seed)
+        return fake_features
 
     def generate_tsne_images(self):
         noise = tf.random.normal([self.config.test_sample_num, self.latent_dim])
