@@ -92,18 +92,16 @@ class C_Discriminator(BaseModel):
 class C_Generator(BaseModel):
     def __init__(self,config):
         super(C_Generator, self).__init__(config=config)
-        self.dense_1 = Dense(256, activation=tf.nn.relu)
-        self.dense_2 = Dense(512, activation=tf.nn.relu)
-        self.dense_3 = Dense(1024, activation=tf.nn.relu)
-        self.dense_4 = Dense(28 * 28)
-        self.reshape = Reshape((28, 28, 1))
+        self.dense_1 = Dense(config.generator_dense1_dim, activation=tf.nn.relu)
+        self.dense_2 = Dense(config.generator_dense2_dim, activation=tf.nn.relu)
+        self.dense_3 = Dense(config.generator_dense3_dim, activation=tf.nn.relu)
+        self.dense_4 = Dense(config.feature_dim)
 
     def call(self, inputs):
         x = self.dense_1(inputs)
         x = self.dense_2(x)
         x = self.dense_3(x)
-        x = self.dense_4(x)
-        return self.reshape(x)
+        return self.dense_4(x)
     
 class AC_Discriminator(BaseModel):
     def __init__(self,config):
@@ -125,15 +123,12 @@ class AC_Discriminator(BaseModel):
 class AC_Generator(BaseModel):
     def __init__(self,config):
         super(AC_Generator, self).__init__(config=config)
-        self.dense_1 = Dense(256, activation=tf.nn.relu)
-        self.dense_2 = Dense(512, activation=tf.nn.relu)
-        self.dense_3 = Dense(1024, activation=tf.nn.relu)
-        self.dense_4 = Dense(28 * 28)
-        self.reshape = Reshape((28, 28, 1))
-
+        self.dense_1 = Dense(config.generator_dense1_dim, activation=tf.nn.relu)
+        self.dense_2 = Dense(config.generator_dense2_dim, activation=tf.nn.relu)
+        self.dense_3 = Dense(config.generator_dense3_dim, activation=tf.nn.relu)
+        self.dense_4 = Dense(config.feature_dim)
     def call(self, inputs):
         x = self.dense_1(inputs)
         x = self.dense_2(x)
         x = self.dense_3(x)
-        x = self.dense_4(x)
-        return self.reshape(x)
+        return self.dense_4(x)
