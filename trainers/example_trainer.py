@@ -51,30 +51,50 @@ class Trainer:
         self.discriminator_extra_steps = config.discriminator_extra_steps
         self.img_save_path = "./generate_img"
         self.latent_dim = config.latent_dim
-        noise = tf.random.normal([self.config.num_classes, self.latent_dim])
-        seed_labels = tf.keras.utils.to_categorical(range(self.config.num_classes),self.config.num_classes)
-        self.seed = tf.concat(
-            [noise, seed_labels], axis=1
-            )
+        # noise = tf.random.normal([self.config.num_classes, self.latent_dim])
+        # seed_labels = tf.keras.utils.to_categorical(range(self.config.num_classes),self.config.num_classes)
+        # self.seed = tf.concat(
+        #     [noise, seed_labels], axis=1
+        #     )
+        self.cls_optimizer = tf.keras.optimizers.legacy.Adam(self.learning_rate)
         self.disc_optimizer = tf.keras.optimizers.legacy.Adam(self.learning_rate)
         self.gen_optimizer = tf.keras.optimizers.legacy.Adam(self.learning_rate)
+        
         self.loss_fn_binary = tf.keras.losses.BinaryCrossentropy(from_logits=True)
         self.loss_fn_categorical = tf.keras.losses.CategoricalCrossentropy(from_logits=True) #int
         self.loss_fn_cls = tf.keras.losses.CategoricalCrossentropy(from_logits=False)
+        
+        self.disc_test_binary_accuracy = tf.keras.metrics.BinaryAccuracy(name='disc_test_binary_accuracy')
+        self.disc_test_categorical_accuracy = tf.keras.metrics.CategoricalAccuracy(name='disc_test_categorical_accuracy')
+        self.disc_train_binary_accuracy = tf.keras.metrics.BinaryAccuracy(name='disc_train_binary_accuracy')
+        self.disc_train_categorical_accuracy = tf.keras.metrics.CategoricalAccuracy(name='disc_train_categorical_accuracy')
+
+        self.cls_train_loss = tf.keras.metrics.Mean(name='cls_train_loss')
+        self.cls_train_accuracy = tf.keras.metrics.CategoricalAccuracy(name='cls_train_accuracy')
+        self.cls_test_loss = tf.keras.metrics.Mean(name='cls_test_loss')
+        self.cls_test_accuracy = tf.keras.metrics.CategoricalAccuracy(name='cls_test_accuracy')
+        self.global_cls_test_accuracy = tf.keras.metrics.CategoricalAccuracy(name='global_cls_test_accuracy')
 
         self.disc_train_loss = tf.keras.metrics.Mean(name='disc_train_loss')
         self.gen_train_loss = tf.keras.metrics.Mean(name='gen_train_loss')  
-
         self.disc_test_loss = tf.keras.metrics.Mean(name='disc_test_loss')
         self.gen_test_loss = tf.keras.metrics.Mean(name='gen_test_loss')
+
         current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-        train_log_dir = 'logs/gradient_tape/' + current_time + '/train'
-        test_log_dir = 'logs/gradient_tape/' + current_time + '/test'
-        generator_img_logdir = "logs/train_data/" + current_time
-        self.train_summary_writer = tf.summary.create_file_writer(train_log_dir)
-        self.test_summary_writer = tf.summary.create_file_writer(test_log_dir)
-        self.generator_img_writer = tf.summary.create_file_writer(generator_img_logdir)
-        self.compare_fake_real_img_writer = tf.summary.create_file_writer( "logs/compare_fake_real_img/" + current_time)
+        GAN_train_log_dir = 'logs/GAN_gradient_tape/' +client_name +"/"+ current_time + '/train'
+        GAN_test_log_dir = 'logs/GAN_gradient_tape/' +client_name +"/"+ current_time + '/test'
+        CLS_train_log_dir = 'logs/CLS_gradient_tape/' +client_name +"/"+ current_time + '/train'
+        CLS_test_log_dir = 'logs/CLS_gradient_tape/' +client_name +"/"+ current_time + '/test'
+        CLS_compare_test_log_dir = 'logs/CLS_gradient_tape/' +client_name +"/"+ current_time + '/global'
+
+        # generator_img_logdir = "logs/train_data/" +client_name +"/"+ current_time
+        self.GAN_train_summary_writer = tf.summary.create_file_writer(GAN_train_log_dir)
+        self.GAN_test_summary_writer = tf.summary.create_file_writer(GAN_test_log_dir)
+        self.CLS_train_summary_writer = tf.summary.create_file_writer(CLS_train_log_dir)
+        self.CLS_test_summary_writer = tf.summary.create_file_writer(CLS_test_log_dir)
+        self.CLS_compare_test_acc_summary_writer = tf.summary.create_file_writer(CLS_compare_test_log_dir)
+        # self.generator_img_writer = tf.summary.create_file_writer(generator_img_logdir)
+        self.compare_fake_real_img_writer = tf.summary.create_file_writer( "logs/compare_fake_real_img/" +client_name +"/"+current_time)
 
     def __call__(self):
         if self.init is None:
