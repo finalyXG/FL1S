@@ -208,8 +208,8 @@ class Trainer:
         gp = tf.reduce_mean((norm - 1.0) ** 2)
         return gp
 
-    def trainGAN(self, real_features):
-        checkpoint_dir = './training_checkpoints'
+    def trainGAN(self):
+        checkpoint_dir = './gan_training_checkpoints/%s/'%self.client_name
         checkpoint_prefix = os.path.join(checkpoint_dir, "ckpt")
         checkpoint = tf.train.Checkpoint(generator_optimizer=self.disc_optimizer,
                                         discriminator_optimizer=self.gen_optimizer,
@@ -217,70 +217,84 @@ class Trainer:
                                         discriminator=self.discriminator)
         #read latest_checkpoint
         # checkpoint.restore(tf.train.latest_checkpoint(checkpoint_dir)) 
-
         for cur_epoch in range(self.generator.cur_epoch_tensor.numpy(), self.config.GAN_num_epochs + 1, 1):
             # train 
-            for _ in range(self.config.num_iter_per_epoch):
-                self.trainGAN_step()
+            for x,y in self.train_data:
+                self.trainGAN_step(x,y)
+    
             # recoed training result on tensorboard
-            with self.train_summary_writer.as_default():
-                tf.summary.scalar('disc_loss', self.disc_train_loss.result(), step=cur_epoch)
-                tf.summary.scalar('gen_loss', self.gen_train_loss.result(), step=cur_epoch)
+            with self.GAN_train_summary_writer.as_default():
+                tf.summary.scalar('disc_loss_'+self.client_name, self.disc_train_loss.result(), step=cur_epoch)
+                tf.summary.scalar('gen_loss_'+self.client_name, self.gen_train_loss.result(), step=cur_epoch)
+                # tf.summary.scalar('disc_binary_accuracy_'+self.client_name, self.disc_train_binary_accuracy.result(), step=cur_epoch)
+                # tf.summary.scalar('disc_categorical_accuracy_'+self.client_name, self.disc_train_categorical_accuracy.result(), step=cur_epoch)
 
             self.generator.cur_epoch_tensor.assign_add(1)
             self.discriminator.cur_epoch_tensor.assign_add(1)
             display.clear_output(wait=True)
             print('cur_epoch',cur_epoch+1)
 
-            #get generator output img
-            img = self.generate_and_save_images(self.generator,
-                            cur_epoch + 1,
-                            self.seed)
+            # #get generator output img
+            # img = self.generate_and_save_images(self.generator,
+            #                 cur_epoch + 1,
+            #                 self.seed)
             
-            # show img on tensorboard
-            with self.generator_img_writer.as_default():
-                tf.summary.image("Generate data", img, step=cur_epoch)
+            # # show img on tensorboard
+            # with self.generator_img_writer.as_default():
+            #     tf.summary.image("Generate data", img, step=cur_epoch)
             
             with self.compare_fake_real_img_writer.as_default():
-                tf.summary.image("compare fake real img", self.generate_tsne_images(), step=cur_epoch)
-
+                tf.summary.image("compare fake real img_"+self.client_name, self.generate_tsne_images(), step=cur_epoch)
+            
             #test
-            for(X_test, Y_test) in self.data.test_batched:
+            for(X_test, Y_test) in self.test_data:
                 self.testGAN_step(X_test,Y_test)
             # recoed test result on tensorboard
-            with self.test_summary_writer.as_default():
-                tf.summary.scalar('disc_loss', self.disc_test_loss.result(), step=cur_epoch)
-                tf.summary.scalar('gen_loss', self.gen_test_loss.result(), step=cur_epoch)
-            
+            with self.GAN_test_summary_writer.as_default():
+                tf.summary.scalar('disc_loss_'+self.client_name, self.disc_test_loss.result(), step=cur_epoch)
+                tf.summary.scalar('gen_loss_'+self.client_name, self.gen_test_loss.result(), step=cur_epoch)
+                # tf.summary.scalar('disc_binary_accuracy_'+self.client_name, self.disc_test_binary_accuracy.result(), step=cur_epoch)
+                # tf.summary.scalar('disc_categorical_accuracy_'+self.client_name, self.disc_test_categorical_accuracy.result(), step=cur_epoch)
+
             #print
-            template = 'Epoch {}, Generator Loss: {}, Discriminator Loss: {}, Generator Test Loss: {}, Discriminator Test Loss: {}'
+            template = 'Epoch {}, Generator Loss: {}, Discriminator Loss: {}, Binary Accuracy: {}, Categorical Accuracy: {}, Generator Test Loss: {}, Discriminator Test Loss: {}, Binary Test Accuracy: {}, Categorical Test Accuracy: {},'
             print (template.format(cur_epoch+1,
                                     self.gen_train_loss.result(), 
                                     self.disc_train_loss.result(), 
+                                    self.disc_train_binary_accuracy.result()*100,
+                                    self.disc_train_categorical_accuracy.result()*100,
                                     self.gen_test_loss.result(), 
-                                    self.disc_test_loss.result()))
+                                    self.disc_test_loss.result(),
+                                    self.disc_test_binary_accuracy.result()*100,
+                                    self.disc_test_categorical_accuracy.result()*100,))
             if cur_epoch != self.config.GAN_num_epochs:
                 # Reset metrics every epoch
                 self.gen_train_loss.reset_states()
                 self.disc_train_loss.reset_states()
+                self.disc_train_binary_accuracy.reset_states()
+                self.disc_train_categorical_accuracy.reset_states()
                 self.gen_test_loss.reset_states()
                 self.disc_test_loss.reset_states()
+                self.disc_test_binary_accuracy.reset_states()
+                self.disc_test_categorical_accuracy.reset_states()
 
             #Save the model every 50 epochs
             if (cur_epoch + 1) % 50 == 0:
                 checkpoint.save(file_prefix = checkpoint_prefix)
         
-        self.trainGAN_step()
+        # self.trainGAN_step()
         # Generate after the final epoch
         display.clear_output(wait=True)
-        img = self.generate_and_save_images(self.generator,
-                                self.config.GAN_num_epochs + 1,
-                                self.seed)
+
+        # img = self.generate_and_save_images(self.generator,
+        #                         self.config.GAN_num_epochs + 1,
+        #                         self.seed)
+        ## show generator digital img on tensorboard
+        # with self.generator_img_writer.as_default():
+        #     tf.summary.image("Generate data", img, step=self.config.GAN_num_epochs + 1)
         
-        with self.generator_img_writer.as_default():
-            tf.summary.image("Generate data", img, step=self.config.GAN_num_epochs + 1)
-        
-        return self.disc_test_loss.result(), self.gen_test_loss.result()
+        return self.disc_test_loss.result(), self.gen_test_loss.result(), self.generate_fake_features()
+    
 
     def generate_tsne_images(self):
         noise = tf.random.normal([self.config.test_sample_num, self.latent_dim])
