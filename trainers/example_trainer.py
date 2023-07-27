@@ -12,16 +12,36 @@ from sklearn.manifold import TSNE
 from absl import app, flags
 from tensorboard.plugins.hparams import api as hp
 import shutil
+import time
 
 class Trainer:
-    def __init__(self, data, discriminator, generator, config, hparams):
+    def __init__(self, client_name, client_data,all_test_x,all_test_y, cls, discriminator, generator, config, hparams):
+        self.client_name = client_name
         self.cls = cls
         self.discriminator = discriminator
         self.generator = generator
         self.config = config
-        self.data = data
         hparams = {h.name: hparams[h] for h in hparams}
-        self.version = hparams['gan_version']
+        #split data
+        (train_data, test_data) = client_data
+        self.all_test_x,self.all_test_y = all_test_x,all_test_y
+        self.train_x,self.train_y = zip(*train_data)
+        self.test_x,self.test_y = zip(*test_data)
+        self.train_x,self.train_y = np.array(self.train_x),np.array(self.train_y)
+        self.test_x,self.test_y = np.array(self.test_x),np.array(self.test_y)
+        # self.y_label = np.argmax(self.y, axis=1)
+        # for element in set(np.array(self.y_label)):
+        #     print(element," count: ", list(self.y_label).count(element))
+        self.train_data = tf.data.Dataset.from_tensor_slices(
+        (self.train_x,self.train_y)).shuffle(1000).batch(hparams['batch_size'],drop_remainder=True)
+        self.test_data = tf.data.Dataset.from_tensor_slices(
+        (self.test_x,self.test_y)).shuffle(1000).batch(hparams['batch_size'],drop_remainder=True)
+        self.all_test_data = tf.data.Dataset.from_tensor_slices(
+        (all_test_x,all_test_y)).shuffle(1000).batch(hparams['batch_size'],drop_remainder=True)
+        
+        self.local_cls_acc_list = []
+        self.global_cls_acc_list = []
+        self.version = "ACGAN" #hparams['gan_version']
         self.batch_size = hparams['batch_size']
         self.cls_batch_size = config.cls_batch_size
         self.learning_rate = hparams['learning_rate']
