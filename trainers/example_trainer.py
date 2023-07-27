@@ -101,7 +101,87 @@ class Trainer:
             self.init = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
         return self.init
     
-    def gradient_penalty(self, real_images, fake_images):
+    @tf.function
+    def train_cls_step(self,images, labels):
+        # images, labels = next(self.data.next_batch(self.cls_batch_size))
+        with tf.GradientTape() as tape:
+            predictions = self.cls(images, training=True)
+            loss = self.loss_fn_cls(labels, predictions)
+        gradients = tape.gradient(loss, self.cls.trainable_variables)
+        self.cls_optimizer.apply_gradients(zip(gradients, self.cls.trainable_variables))
+        return self.cls_train_loss(loss), self.cls_train_accuracy(labels, predictions)
+    
+    @tf.function
+    def local_test_cls_step(self,images, labels):
+        predictions = self.cls(images, training=True)
+        loss = self.loss_fn_cls(labels, predictions)
+        return self.cls_test_loss(loss), self.cls_test_accuracy(labels, predictions)
+    
+    @tf.function
+    def global_test_cls_step(self,images, labels):
+        predictions = self.cls(images, training=True)
+        return self.global_cls_test_accuracy(labels, predictions)
+
+    def train_cls(self):
+        checkpoint_dir = './cls_training_checkpoints/%s/'%self.client_name
+        checkpoint_local_prefix = os.path.join(checkpoint_dir+'/local', "ckpt")
+        checkpoint_global_prefix = os.path.join(checkpoint_dir+'/global', "ckpt")
+        checkpoint = tf.train.Checkpoint( optimizer=self.cls_optimizer,
+                                        cls=self.cls, max_to_keep=tf.Variable(1))
+        
+        for cur_epoch in range(self.cls.cur_epoch_tensor.numpy(), self.config.cls_num_epochs + 1, 1):
+            for x, y  in self.train_data:
+                self.train_cls_step(x, y)
+            
+            with self.CLS_train_summary_writer.as_default():
+                tf.summary.scalar('cls_loss_'+self.client_name, self.cls_train_loss.result(), step=cur_epoch)
+                tf.summary.scalar('cls_accuracy_'+self.client_name, self.cls_train_accuracy.result(), step=cur_epoch)
+
+            self.cls.cur_epoch_tensor.assign_add(1)
+
+            for(X_test, Y_test) in self.test_data:
+                self.local_test_cls_step(X_test, Y_test)
+
+            # recoed test result on tensorboard
+            with self.CLS_test_summary_writer.as_default():
+                tf.summary.scalar('cls_loss_'+self.client_name, self.cls_test_loss.result(), step=cur_epoch)
+                tf.summary.scalar('cls_accuracy_'+self.client_name, self.cls_test_accuracy.result(), step=cur_epoch)
+                tf.summary.scalar('compare_cls_accuracy_'+self.client_name, self.cls_test_accuracy.result(), step=cur_epoch)
+            
+            for(X_test, Y_test) in self.all_test_data:
+                self.global_test_cls_step(X_test, Y_test)
+            with self.CLS_compare_test_acc_summary_writer.as_default():
+                # tf.summary.scalar('local_cls_accuracy_'+self.client_name, self.cls_test_accuracy.result(), step=cur_epoch)
+                tf.summary.scalar('compare_cls_accuracy_'+self.client_name, self.global_cls_test_accuracy.result(), step=cur_epoch)
+            
+            self.global_cls_acc_list.append(self.global_cls_test_accuracy.result())
+            self.local_cls_acc_list.append(self.cls_test_accuracy.result())
+            
+            if self.global_cls_test_accuracy.result() == max(self.global_cls_acc_list):
+                checkpoint.save(file_prefix = checkpoint_global_prefix)
+            if self.cls_test_accuracy.result() == max(self.local_cls_acc_list):
+                checkpoint.save(file_prefix = checkpoint_local_prefix)
+
+            template = 'Epoch {}, Loss: {}, Accuracy: {}, Test Loss: {}, Test Accuracy: {}, Global Test Accuracy: {}'
+            print (template.format(cur_epoch+1,
+                                    self.cls_train_loss.result(), 
+                                    self.cls_train_accuracy.result()*100,
+                                    self.cls_test_loss.result(), 
+                                    self.cls_test_accuracy.result()*100,
+                                    self.global_cls_test_accuracy.result()*100))
+
+            # Reset metrics every epoch
+            self.cls_train_loss.reset_states()
+            self.cls_test_loss.reset_states()
+            self.cls_train_accuracy.reset_states()
+            self.cls_test_accuracy.reset_states()
+
+        max_local_acc_index = self.local_cls_acc_list.index(max(self.local_cls_acc_list))
+        max_global_acc_index = self.global_cls_acc_list.index(max(self.global_cls_acc_list))
+        print("max_local_acc_index",max_local_acc_index,"max_local_acc",max(self.local_cls_acc_list))
+        print("max_global_acc_index",max_global_acc_index,"max_global_acc", max(self.global_cls_acc_list))
+        return self.local_cls_acc_list, self.global_cls_acc_list
+
         """Calculates the gradient penalty.
 
         This loss is calculated on an interpolated image
