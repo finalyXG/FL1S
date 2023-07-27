@@ -1,5 +1,5 @@
 import tensorflow as tf
-from tensorflow.keras.layers import Dense, Flatten,Multiply,LeakyReLU, Embedding,Dropout, Conv2D, Reshape, BatchNormalization
+from tensorflow.keras.layers import Dense, Flatten,MaxPooling2D,Multiply,LeakyReLU, Embedding,Dropout, Conv2D, Reshape, BatchNormalization
 from tensorflow.keras import Model
 
 class BaseModel(Model):
@@ -43,6 +43,35 @@ class BaseModel(Model):
         # with tf.variable_scope('global_step'):
         with tf.compat.v1.variable_scope('global_step'):
             self.global_step_tensor = tf.Variable(0, trainable=False, name='global_step')
+
+
+class Classifier(BaseModel):
+    def __init__(self,config):
+        super(Classifier, self).__init__(config=config)
+        self.num_classes = config.num_classes
+        self.features = None
+        self.cov_1 = Conv2D(2, 3, padding='same', activation='relu', input_shape=(28,28,)  )
+        self.pool_1 = MaxPooling2D() #14*14
+        self.cov_2 = Conv2D(1, 2,strides=(2,2), activation='relu')  #7*7
+        
+        self.flatten = Flatten()   #49
+        self.dense_1 = Dense(16, activation='relu' )
+        self.dense_2 = Dense(self.num_classes, activation='softmax')
+
+    def call(self, inputs):
+        x = self.cov_1(inputs)
+        x = self.pool_1(x)
+        x = self.cov_2(x)
+        x = self.flatten(x)
+        self.features = x
+        x = self.dense_1(x)
+        return self.dense_2(x)
+    
+    def get_features(self, inputs):
+        x = self.cov_1(inputs)
+        x = self.pool_1(x)
+        x = self.cov_2(x)
+        return self.flatten(x)
 
 class C_Discriminator(BaseModel):
     def __init__(self,config):
