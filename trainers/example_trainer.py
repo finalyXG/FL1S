@@ -181,13 +181,36 @@ class Trainer:
         print("max_local_acc_index",max_local_acc_index,"max_local_acc",max(self.local_cls_acc_list))
         print("max_global_acc_index",max_global_acc_index,"max_global_acc", max(self.global_cls_acc_list))
         return self.local_cls_acc_list, self.global_cls_acc_list
-
-        """Calculates the gradient penalty.
+    
+    #features_version
+    def gradient_penalty(self, real_features, generated_features):
+        """ features_version
+        Calculates the gradient penalty.
 
         This loss is calculated on an interpolated image
         and added to the discriminator loss.
         """
         # Get the interpolated image
+        alpha = tf.random.normal([self.batch_size, 1], 0.0, 1.0)
+        diff = generated_features - real_features
+        interpolated = real_features + alpha * diff
+        with tf.GradientTape() as gp_tape:
+            gp_tape.watch(interpolated)
+            # 1. Get the discriminator output for this interpolated image.
+            if self.version == "ACGAN":
+                pred, pred_class = self.discriminator(interpolated, training=True)
+            else:
+                pred = self.discriminator(interpolated, training=True)
+
+        # 2. Calculate the gradients w.r.t to this interpolated image.
+        grads = gp_tape.gradient(pred, [interpolated])[0]
+        # 3. Calculate the norm of the gradients.
+        norm = tf.sqrt(tf.reduce_sum(tf.square(grads), axis=[1]))
+        gp = tf.reduce_mean((norm - 1.0) ** 2)
+        return gp
+    
+    #img version
+    def gradient_penalty(self, real_images, fake_images):
         alpha = tf.random.normal([self.batch_size, 1, 1, 1], 0.0, 1.0)
         diff = fake_images - real_images
         interpolated = real_images + alpha * diff
