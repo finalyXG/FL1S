@@ -42,11 +42,11 @@ class Trainer:
         self.all_test_data = tf.data.Dataset.from_tensor_slices(
         (all_test_x,all_test_y)).shuffle(1000).batch(hparams['batch_size'],drop_remainder=True)
         
-        self.local_cls_acc_list = []
+        self.local_cls_acc_list = []  
         self.global_cls_acc_list = []
-        self.version = "ACGAN" #hparams['gan_version']
+        self.GAN_version = "ACGAN" #hparams['gan_version']
         self.batch_size = hparams['batch_size']
-        self.cls_batch_size = config.cls_batch_size
+        self.distance_loss_weight = hparams['distance_loss_weight']
         self.learning_rate = hparams['learning_rate']
         self.image_size = config.image_size
         self.gp_weight = config.gp_weight
@@ -73,6 +73,9 @@ class Trainer:
         self.disc_train_categorical_accuracy = tf.keras.metrics.CategoricalAccuracy(name='disc_train_categorical_accuracy')
 
         self.cls_train_loss = tf.keras.metrics.Mean(name='cls_train_loss')
+        self.cls_train_distance_loss = tf.keras.metrics.Mean(name='cls_train_distance_loss')
+        self.cls_train_classify_loss = tf.keras.metrics.Mean(name='cls_train_classify_loss')
+
         self.cls_train_accuracy = tf.keras.metrics.CategoricalAccuracy(name='cls_train_accuracy')
         self.cls_test_loss = tf.keras.metrics.Mean(name='cls_test_loss')
         self.cls_test_accuracy = tf.keras.metrics.CategoricalAccuracy(name='cls_test_accuracy')
@@ -105,16 +108,20 @@ class Trainer:
         if self.init is None:
             self.init = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
         return self.init
-    
-    @tf.function
+
+    # @tf.function   #means cancel eager mode --> able to convert tensor to array
     def train_cls_step(self,images, labels):
-        # images, labels = next(self.data.next_batch(self.cls_batch_size))
         with tf.GradientTape() as tape:
             predictions = self.cls(images, training=True)
             loss = self.loss_fn_cls(labels, predictions)
+            self.cls_train_classify_loss(loss)
+            distance_loss = 0.0
+            if self.pre_features_central is not None:
+                distance_loss = self.count_features_central_distance(images, labels)
+            loss += (distance_loss*self.distance_loss_weight)
         gradients = tape.gradient(loss, self.cls.trainable_variables)
         self.cls_optimizer.apply_gradients(zip(gradients, self.cls.trainable_variables))
-        return self.cls_train_loss(loss), self.cls_train_accuracy(labels, predictions)
+        return self.cls_train_loss(loss), self.cls_train_accuracy(labels, predictions), self.cls_train_distance_loss(distance_loss)
     
     @tf.function
     def local_test_cls_step(self,images, labels):
@@ -126,21 +133,49 @@ class Trainer:
     def global_test_cls_step(self,images, labels):
         predictions = self.cls(images, training=True)
         return self.global_cls_test_accuracy(labels, predictions)
+    
+    def get_features_central(self,images, labels):  
+        #using client train dataset to generate features central
+        feature_avg_dic = {}
+        labels = np.argmax(labels, axis=1)
+        for label in set(labels):
+            label_index = np.where(labels==label)
+            feature = self.cls.get_features(images[label_index])
+            avg_feature = tf.reduce_mean(feature, axis=0) 
+            feature_avg_dic[label] = avg_feature
+        return feature_avg_dic
 
-    def train_cls(self):
-        checkpoint_dir = './cls_training_checkpoints/%s/'%self.client_name
-        checkpoint_local_prefix = os.path.join(checkpoint_dir+'/local', "ckpt")
-        checkpoint_global_prefix = os.path.join(checkpoint_dir+'/global', "ckpt")
-        checkpoint = tf.train.Checkpoint( optimizer=self.cls_optimizer,
-                                        cls=self.cls, max_to_keep=tf.Variable(1))
-        
+    def count_features_central_distance(self, images, labels):
+        # dist = tf.linalg.norm(new_feature_avg_dic-self.pre_features_central)
+        feature = self.cls.get_features(images)
+        labels = np.argmax(labels, axis=1)
+        accumulate_loss = 0
+        for vector,label in zip(feature,labels):  
+            pre_vector = self.pre_features_central[label]
+            cos_sim = tf.tensordot(vector, pre_vector,axes=1)/(tf.linalg.norm(vector)*tf.linalg.norm(pre_vector)+0.001)
+            accumulate_loss += 1 - cos_sim
+        return accumulate_loss / len(labels)
+
+    def train_cls(self,worksheet, suffix):
+        checkpoint_dir = './tmp/%s/%s%s/cls_training_checkpoints/'%(self.client_name,self.version_num,suffix)
+        if not os.path.exists(checkpoint_dir):
+            os.makedirs(checkpoint_dir+'local')
+            os.makedirs(checkpoint_dir+'global')
+        # checkpoint_local_prefix = os.path.join(checkpoint_dir+'local', "ckpt")
+        # checkpoint_global_prefix = os.path.join(checkpoint_dir+'global', "ckpt")
+        # checkpoint = tf.train.Checkpoint( optimizer=self.cls_optimizer,
+        #                                 cls=self.cls, max_to_keep=tf.Variable(1))
+        #read latest_checkpoint
+        # checkpoint.restore(tf.train.latest_checkpoint(checkpoint_dir+'local')) 
         for cur_epoch in range(self.cls.cur_epoch_tensor.numpy(), self.config.cls_num_epochs + 1, 1):
             for x, y  in self.train_data:
                 self.train_cls_step(x, y)
             
             with self.CLS_train_summary_writer.as_default():
-                tf.summary.scalar('cls_loss_'+self.client_name, self.cls_train_loss.result(), step=cur_epoch)
+                tf.summary.scalar('cls_loss_'+self.client_name, self.cls_train_loss.result(), step=cur_epoch) 
                 tf.summary.scalar('cls_accuracy_'+self.client_name, self.cls_train_accuracy.result(), step=cur_epoch)
+                tf.summary.scalar('cls_distance_loss_'+self.client_name, self.cls_train_distance_loss.result(), step=cur_epoch) 
+                # tf.summary.scalar('cls_classify_loss_'+self.client_name, self.cls_train_classify_loss.result(), step=cur_epoch) 
 
             self.cls.cur_epoch_tensor.assign_add(1)
 
@@ -155,17 +190,38 @@ class Trainer:
             
             for(X_test, Y_test) in self.all_test_data:
                 self.global_test_cls_step(X_test, Y_test)
+
             with self.CLS_compare_test_acc_summary_writer.as_default():
-                # tf.summary.scalar('local_cls_accuracy_'+self.client_name, self.cls_test_accuracy.result(), step=cur_epoch)
                 tf.summary.scalar('compare_cls_accuracy_'+self.client_name, self.global_cls_test_accuracy.result(), step=cur_epoch)
             
             self.global_cls_acc_list.append(self.global_cls_test_accuracy.result())
             self.local_cls_acc_list.append(self.cls_test_accuracy.result())
             
             if self.global_cls_test_accuracy.result() == max(self.global_cls_acc_list):
-                checkpoint.save(file_prefix = checkpoint_global_prefix)
+                # self.cls.save_weights(checkpoint_global_path.format(epoch=cur_epoch))
+                del_list = os.listdir(checkpoint_dir+'global')
+                for f in del_list:
+                    file_path = os.path.join(checkpoint_dir+'global', f)
+                    if os.path.isfile(file_path):
+                        os.remove(file_path)
+                # checkpoint.save(file_prefix = checkpoint_global_prefix)
+                self.cls.save_weights(f"{checkpoint_dir}/global/cp-{cur_epoch:04d}.ckpt")
+
+
             if self.cls_test_accuracy.result() == max(self.local_cls_acc_list):
-                checkpoint.save(file_prefix = checkpoint_local_prefix)
+                # self.cls.save_weights(checkpoint_local_path.format(epoch=cur_epoch))
+                del_list = os.listdir(checkpoint_dir+'local')
+                for f in del_list:
+                    file_path = os.path.join(checkpoint_dir+'local', f)
+                    if os.path.isfile(file_path):
+                        os.remove(file_path)
+                # checkpoint.save(file_prefix = checkpoint_local_prefix)
+             
+                #record metric into excel
+                for col_num,col_value in enumerate([self.version_num, self.distance_loss_weight, self.cls_train_accuracy.result(),self.cls_test_accuracy.result(), self.global_cls_test_accuracy.result(),self.cls_train_distance_loss.result()]):
+                        worksheet.cell(row=int(self.version_num)+2, column=col_num+1, value = float(col_value))
+                # pre_features_central, real_features = self.get_features_central(self.train_x,self.train_y), self.generate_real_features()
+                self.cls.save_weights(f"{checkpoint_dir}/local/cp-{cur_epoch:04d}.ckpt")
 
             template = 'Epoch {}, Loss: {}, Accuracy: {}, Test Loss: {}, Test Accuracy: {}, Global Test Accuracy: {}'
             print (template.format(cur_epoch+1,
@@ -180,12 +236,19 @@ class Trainer:
             self.cls_test_loss.reset_states()
             self.cls_train_accuracy.reset_states()
             self.cls_test_accuracy.reset_states()
+            self.global_cls_test_accuracy.reset_states()
+            self.cls_train_distance_loss.reset_states()
 
         max_local_acc_index = self.local_cls_acc_list.index(max(self.local_cls_acc_list))
         max_global_acc_index = self.global_cls_acc_list.index(max(self.global_cls_acc_list))
         print("max_local_acc_index",max_local_acc_index,"max_local_acc",max(self.local_cls_acc_list))
         print("max_global_acc_index",max_global_acc_index,"max_global_acc", max(self.global_cls_acc_list))
-        return self.local_cls_acc_list, self.global_cls_acc_list
+        
+        #load model in best local test acc
+        # checkpoint.restore(tf.train.latest_checkpoint(checkpoint_dir+'local')) 
+        latest = tf.train.latest_checkpoint(checkpoint_dir+'local')
+        self.cls.load_weights(latest)
+        return self.get_features_central(self.train_x,self.train_y), self.generate_real_features()
     
     #features_version
     def gradient_penalty(self, real_features, generated_features):
