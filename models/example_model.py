@@ -1,16 +1,16 @@
 import tensorflow as tf
-from tensorflow.keras.layers import Dense, Flatten,MaxPooling2D,Multiply,LeakyReLU, Embedding,Dropout, Conv2D, Reshape, BatchNormalization
+from tensorflow.keras.layers import Dense, Flatten, Conv2D, MaxPooling2D, Multiply, LeakyReLU, Embedding, Dropout,  Reshape, BatchNormalization
 from tensorflow.keras import Model
-
+import time
 class BaseModel(Model):
     def __init__(self, config):
         super(BaseModel, self).__init__()
+        tf.random.set_seed(config.random_seed)
         self.config = config
         # init the global step
         self.init_global_step()
         # init the epoch counter
         self.init_cur_epoch()
-    
         # self.build_model()
         self.init_saver()
 
@@ -49,30 +49,30 @@ class Classifier(BaseModel):
     def __init__(self,config):
         super(Classifier, self).__init__(config=config)
         self.num_classes = config.num_classes
-        self.features = None
-        self.cov_1 = Conv2D(2, 3, padding='same', activation='relu', input_shape=(28,28,)  )
-        self.pool_1 = MaxPooling2D() #14*14
-        self.cov_2 = Conv2D(1, 2,strides=(2,2), activation='relu')  #7*7
+        self.cov_1 = Conv2D(32, kernel_size=(3, 3), padding='same', activation='relu', input_shape=(28,28,)  , kernel_initializer='glorot_normal')
+        self.cov_2 = Conv2D(32, kernel_size=(3, 3), activation='relu', kernel_initializer='glorot_normal') 
         
-        self.flatten = Flatten()   #49
-        self.dense_1 = Dense(16, activation='relu' )
-        self.dense_2 = Dense(self.num_classes, activation='softmax')
+        self.flatten = Flatten()
+        self.dense_1 = Dense(49, activation='relu', kernel_initializer='glorot_normal')
+        self.dense_2 = Dense(16, activation='relu',kernel_initializer='glorot_normal')
+        self.dense_3 = Dense(self.num_classes, activation='softmax', kernel_initializer='glorot_normal')
 
     def call(self, inputs):
         x = self.cov_1(inputs)
-        x = self.pool_1(x)
         x = self.cov_2(x)
         x = self.flatten(x)
-        self.features = x
         x = self.dense_1(x)
-        return self.dense_2(x)
+        x = self.dense_2(x)
+        return self.dense_3(x)
     
     def get_features(self, inputs):
         x = self.cov_1(inputs)
-        x = self.pool_1(x)
         x = self.cov_2(x)
-        return self.flatten(x)
-
+        x = self.flatten(x)
+        for layer in [self.dense_1,self.dense_2][:self.config.features_ouput_layer]:
+            x = layer(x)
+        return x
+    
 class C_Discriminator(BaseModel):
     def __init__(self,config):
         super(C_Discriminator, self).__init__(config=config)
@@ -95,7 +95,7 @@ class C_Generator(BaseModel):
         self.dense_1 = Dense(config.generator_dense1_dim, activation=tf.nn.relu)
         self.dense_2 = Dense(config.generator_dense2_dim, activation=tf.nn.relu)
         self.dense_3 = Dense(config.generator_dense3_dim, activation=tf.nn.relu)
-        self.dense_4 = Dense(config.feature_dim)
+        self.dense_4 = Dense(config.latent_dim)
 
     def call(self, inputs):
         x = self.dense_1(inputs)
@@ -119,16 +119,35 @@ class AC_Discriminator(BaseModel):
         x = self.dense_3(x)
         x = self.dense_4(x)
         return x[:, :1], x[:, 1:]
-
+    
+# for generator features
 class AC_Generator(BaseModel):
     def __init__(self,config):
         super(AC_Generator, self).__init__(config=config)
-        self.dense_1 = Dense(config.generator_dense1_dim, activation=tf.nn.relu)
-        self.dense_2 = Dense(config.generator_dense2_dim, activation=tf.nn.relu)
-        self.dense_3 = Dense(config.generator_dense3_dim, activation=tf.nn.relu)
-        self.dense_4 = Dense(config.feature_dim)
+        self.dense_1 = Dense(32, activation=tf.nn.relu)
+        self.dense_2 = Dense(64, activation=tf.nn.relu)
+        self.dense_3 = Dense(128, activation=tf.nn.relu)
+        self.dense_4 = Dense(config.latent_dim)
     def call(self, inputs):
         x = self.dense_1(inputs)
         x = self.dense_2(x)
         x = self.dense_3(x)
         return self.dense_4(x)
+
+
+## for generator img
+# class AC_Generator(BaseModel):
+#     def __init__(self,config):
+#         super(AC_Generator, self).__init__(config=config)
+#         self.dense_1 = Dense(config.generator_dense1_dim, activation=tf.nn.relu)
+#         self.dense_2 = Dense(config.generator_dense2_dim, activation=tf.nn.relu)
+#         self.dense_3 = Dense(config.generator_dense3_dim, activation=tf.nn.relu)
+#         self.dense_4 = Dense(28 * 28)
+#         self.reshape = Reshape((28, 28, 1))
+
+#     def call(self, inputs):
+#         x = self.dense_1(inputs)
+#         x = self.dense_2(x)
+#         x = self.dense_3(x)
+#         x = self.dense_4(x)
+#         return self.reshape(x)
