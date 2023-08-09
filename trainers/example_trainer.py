@@ -13,7 +13,7 @@ from absl import app, flags
 from tensorboard.plugins.hparams import api as hp
 import shutil
 import time
-
+import random
 class Trainer:
     def __init__(self, client_name, client_data,all_test_x,all_test_y, cls, discriminator, generator, config, hparams):
         self.client_name = client_name
@@ -21,7 +21,10 @@ class Trainer:
         self.discriminator = discriminator
         self.generator = generator
         self.config = config
-        hparams = {h.name: hparams[h] for h in hparams}
+        tf.random.set_seed(config.random_seed)
+        np.random.seed(config.random_seed)
+        random.seed(config.random_seed)
+        self.pre_features_central = pre_features_central
         #split data
         (train_data, test_data) = client_data
         self.all_test_x,self.all_test_y = all_test_x,all_test_y
@@ -199,7 +202,7 @@ class Trainer:
         with tf.GradientTape() as gp_tape:
             gp_tape.watch(interpolated)
             # 1. Get the discriminator output for this interpolated image.
-            if self.version == "ACGAN":
+            if self.GAN_version == "ACGAN":
                 pred, pred_class = self.discriminator(interpolated, training=True)
             else:
                 pred = self.discriminator(interpolated, training=True)
@@ -310,7 +313,7 @@ class Trainer:
         # self.trainGAN_step()
         # Generate after the final epoch
         display.clear_output(wait=True)
-
+        ## generate img from generator
         # img = self.generate_and_save_images(self.generator,
         #                         self.config.GAN_num_epochs + 1,
         #                         self.seed)
@@ -323,11 +326,17 @@ class Trainer:
     def generate_fake_features(self):
         noise = tf.random.normal([self.config.test_feature_num, self.latent_dim])
         seed = tf.concat(
-            [noise, self.all_test_y[:self.config.test_feature_num]], axis=1
+            [noise, self.train_y[:self.config.test_feature_num]], axis=1
             )
         fake_features = self.generator(seed)
         return fake_features
-
+    
+    def generate_real_features(self):
+        return self.cls.get_features(self.train_x[:self.config.test_feature_num])
+    
+    def get_features_label(self):
+        return self.train_y[:self.config.test_feature_num]
+    
     def generate_tsne_images(self):
         noise = tf.random.normal([self.config.test_sample_num, self.latent_dim])
         seed = tf.concat(
