@@ -15,8 +15,9 @@ import shutil
 import time
 import random
 class Trainer:
-    def __init__(self, client_name, client_data,all_test_x,all_test_y, cls, discriminator, generator, config, hparams):
+    def __init__(self, client_name, version_num, client_data,all_test_x,all_test_y, pre_features_central, cls, discriminator, generator, config, hparams):
         self.client_name = client_name
+        self.version_num = str(version_num)
         self.cls = cls
         self.discriminator = discriminator
         self.generator = generator
@@ -32,15 +33,17 @@ class Trainer:
         self.test_x,self.test_y = zip(*test_data)
         self.train_x,self.train_y = np.array(self.train_x),np.array(self.train_y)
         self.test_x,self.test_y = np.array(self.test_x),np.array(self.test_y)
-        # self.y_label = np.argmax(self.y, axis=1)
-        # for element in set(np.array(self.y_label)):
-        #     print(element," count: ", list(self.y_label).count(element))
+        ## show the distribution of label
+        # tmp = np.argmax(self.train_y,axis=1)
+        # for element in set(tmp):
+        #     print(element," count: ", list(tmp).count(element))
+
         self.train_data = tf.data.Dataset.from_tensor_slices(
-        (self.train_x,self.train_y)).shuffle(1000).batch(hparams['batch_size'],drop_remainder=True)
+        (self.train_x,self.train_y)).shuffle(hparams['batch_size']*10).batch(hparams['batch_size'],drop_remainder=True)
         self.test_data = tf.data.Dataset.from_tensor_slices(
-        (self.test_x,self.test_y)).shuffle(1000).batch(hparams['batch_size'],drop_remainder=True)
+        (self.test_x,self.test_y)).shuffle(hparams['batch_size']*10).batch(hparams['batch_size'],drop_remainder=True)
         self.all_test_data = tf.data.Dataset.from_tensor_slices(
-        (all_test_x,all_test_y)).shuffle(1000).batch(hparams['batch_size'],drop_remainder=True)
+        (all_test_x,all_test_y)).shuffle(hparams['batch_size']*10).batch(hparams['batch_size'],drop_remainder=True)
         
         self.local_cls_acc_list = []  
         self.global_cls_acc_list = []
@@ -54,17 +57,13 @@ class Trainer:
         self.discriminator_extra_steps = config.discriminator_extra_steps
         self.img_save_path = "./generate_img"
         self.latent_dim = config.latent_dim
-        # noise = tf.random.normal([self.config.num_classes, self.latent_dim])
-        # seed_labels = tf.keras.utils.to_categorical(range(self.config.num_classes),self.config.num_classes)
-        # self.seed = tf.concat(
-        #     [noise, seed_labels], axis=1
-        #     )
+
         self.cls_optimizer = tf.keras.optimizers.legacy.Adam(self.learning_rate)
         self.disc_optimizer = tf.keras.optimizers.legacy.Adam(self.learning_rate)
         self.gen_optimizer = tf.keras.optimizers.legacy.Adam(self.learning_rate)
         
-        self.loss_fn_binary = tf.keras.losses.BinaryCrossentropy(from_logits=True)
-        self.loss_fn_categorical = tf.keras.losses.CategoricalCrossentropy(from_logits=True) #int
+        self.loss_fn_gan_binary = tf.keras.losses.BinaryCrossentropy(from_logits=True)
+        self.loss_fn_gan_categorical = tf.keras.losses.CategoricalCrossentropy(from_logits=True) #int
         self.loss_fn_cls = tf.keras.losses.CategoricalCrossentropy(from_logits=False)
         
         self.disc_test_binary_accuracy = tf.keras.metrics.BinaryAccuracy(name='disc_test_binary_accuracy')
@@ -276,29 +275,6 @@ class Trainer:
         norm = tf.sqrt(tf.reduce_sum(tf.square(grads), axis=[1]))
         gp = tf.reduce_mean((norm - 1.0) ** 2)
         return gp
-    
-    #img version
-    def gradient_penalty(self, real_images, fake_images):
-        alpha = tf.random.normal([self.batch_size, 1, 1, 1], 0.0, 1.0)
-        diff = fake_images - real_images
-        interpolated = real_images + alpha * diff
-
-
-        with tf.GradientTape() as gp_tape:
-            gp_tape.watch(interpolated)
-            # 1. Get the discriminator output for this interpolated image.
-            if self.version == "ACGAN":
-                pred, pred_class = self.discriminator(interpolated, training=True)
-            else:
-                pred = self.discriminator(interpolated, training=True)
-
-        # 2. Calculate the gradients w.r.t to this interpolated image.
-        grads = gp_tape.gradient(pred, [interpolated])[0]
-        # 3. Calculate the norm of the gradients.
-        norm = tf.sqrt(tf.reduce_sum(tf.square(grads), axis=[1, 2, 3]))
-        gp = tf.reduce_mean((norm - 1.0) ** 2)
-        return gp
-
     def trainGAN(self):
         checkpoint_dir = './gan_training_checkpoints/%s/'%self.client_name
         checkpoint_prefix = os.path.join(checkpoint_dir, "ckpt")
