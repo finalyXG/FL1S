@@ -36,12 +36,18 @@ def clients_main(config):
         workbook = openpyxl.load_workbook(f'./tmp/{client_name}/metrics_record.xlsx')
         worksheet = workbook['0'] 
 
+    w_list = [0.0,1.0,5.0, 10.0] 
+
+    all_test_x,all_test_y = data.test_x, data.test_y
+    client_data = data.clients[client_name]
     HP_BATCH_SIZE = hp.HParam("batch_size", hp.Discrete([64]))
-    HP_LEARNING_RATE = hp.HParam("learning_rate", hp.Discrete([0.0005]))#hp.RealInterval(0.001, 0.1))
+    HP_DISTANCE_LOSS_WEIGHT = hp.HParam("distance_loss_weight", hp.Discrete(w_list))
+    HP_LEARNING_RATE = hp.HParam("learning_rate", hp.Discrete([0.001])) #hp.RealInterval(0.001, 0.1))
     # HP_GAN_VERSION = hp.HParam("gan_version", hp.Discrete(['ACGAN']))
     HPARAMS = [
         HP_BATCH_SIZE,
         HP_LEARNING_RATE,
+        HP_DISTANCE_LOSS_WEIGHT,
         # HP_GAN_VERSION,
     ]
     METRICS = [
@@ -85,6 +91,63 @@ def clients_main(config):
     # for model_version in HP_GAN_VERSION.domain.values:
     for batch_size in HP_BATCH_SIZE.domain.values:
         for learning_rate in HP_LEARNING_RATE.domain.values:
+            for distance_loss_weight in HP_DISTANCE_LOSS_WEIGHT.domain.values: #batch_size={batch_size}_learning_rate={learning_rate}
+                # reset random seed for each client
+                tf.random.set_seed(args.random_seed)
+                np.random.seed(args.random_seed)
+                random.seed(args.random_seed)
+
+                # print("tf.random",tf.random.normal([2,1]))
+                # print("np.seed",np.random.rand(2,1))
+                # print("random.seed",random.choice('123456789'))
+                # run_name = "run-%d" % version_num
+                hparams = {
+                    # HP_GAN_VERSION: model_version,
+                    HP_BATCH_SIZE: batch_size,
+                    HP_LEARNING_RATE: learning_rate,
+                    HP_DISTANCE_LOSS_WEIGHT: distance_loss_weight
+                }
+                print({h.name: hparams[h] for h in hparams})
+                hparams = {h.name: hparams[h] for h in hparams}
+                os.makedirs(f"tmp/{client_name}/{version_num}{suffix}")
+
+                # record hparams and config value in this version
+                record_hparams_file = open(f"./tmp/{client_name}/{version_num}{suffix}/hparams_record.txt", "wt")
+                for key,value in hparams.items():
+                    record_hparams_file.write(f"{key}: {value}")
+                    record_hparams_file.write("\n")
+                for key,value in vars(config).items():
+                    record_hparams_file.write(f"{key}: {value}")
+                    record_hparams_file.write("\n")
+                record_hparams_file.close()
+
+                print('--- Starting trial: %s' % version_num)
+                with tf.summary.create_file_writer(os.path.join(config.logdir,client_name,str(version_num))).as_default():
+                    hp.hparams(hparams)  # record the values used in this trial
+        
+                    cls = Classifier(config)
+                    generator = AC_Generator(config)
+                    discriminator = AC_Discriminator(config)
+                    trainer = Trainer(client_name, version_num, client_data, all_test_x, all_test_y, pre_features_central, cls, discriminator, generator,config,hparams)
+                    cur_features_central, real_features = trainer.train_cls(worksheet,suffix)
+                    features_label = trainer.get_features_label()
+                    ### GAN
+                    # print("after train cls")
+                    # disc_test_loss, gen_test_loss, fake_features = trainer.trainGAN()
+                    # tf.summary.scalar("discriminator_test_loss", disc_test_loss, step=1)
+                    # tf.summary.scalar("generator_test_loss", gen_test_loss, step=1)
+                    if client_name == "clients_1":
+                        with open(f"tmp/clients_1/{version_num}{suffix}/features_central.pkl","wb") as fp:
+                            pickle.dump(cur_features_central, fp)
+                    np.save(f"tmp/{client_name}/{version_num}{suffix}/real_features",real_features)
+                    np.save(f"tmp/{client_name}/{version_num}{suffix}/features_label",features_label)
+                
+                version_num += 1
+                if client_name == "clients_1": 
+                    #client 1 do not need to loop distance_loss_weight hapram
+                    break
+                
+    workbook.save(f'./tmp/{client_name}/metrics_record.xlsx')
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
