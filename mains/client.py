@@ -63,30 +63,6 @@ def clients_main(config):
     with tf.summary.create_file_writer(os.path.join(config.logdir,client_name)).as_default():
         hp.hparams_config(hparams=HPARAMS, metrics=METRICS)
 
-    def run(run_dir, hparams):
-        with tf.summary.create_file_writer(run_dir).as_default():
-            hp.hparams(hparams)  # record the values used in this trial
-            # create your data generator
-            # if hparams[HP_GAN_VERSION] == "CGAN":
-            #     generator = C_Generator(config)
-            #     discriminator = C_Discriminator(config)
-            # else:
-            #     generator = AC_Generator(config)
-            #     discriminator = AC_Discriminator(config)
-            cls = Classifier(config)
-            generator = AC_Generator(config)
-            discriminator = AC_Discriminator(config)
-
-            trainer = Trainer( client_name, client_data,all_test_x,all_test_y, cls, discriminator, generator,config,hparams)
-            local_acc, global_acc = trainer.train_cls()
-            print("after train cls")
-            disc_test_loss, gen_test_loss, fake_features = trainer.trainGAN()
-
-            tf.summary.scalar("discriminator_test_loss", disc_test_loss, step=1)
-            tf.summary.scalar("generator_test_loss", gen_test_loss, step=1)
-        return local_acc, global_acc, fake_features
-    
-    session_num = 0
     # create an instance of the model
     # for model_version in HP_GAN_VERSION.domain.values:
     for batch_size in HP_BATCH_SIZE.domain.values:
