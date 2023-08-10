@@ -55,6 +55,28 @@ def show_features_distribution(config, all_features, features_label, client1_ver
     plt.savefig("./img/%s.png"%version,bbox_inches='tight')
     plt.close()
 
+def use_npy_generate_feature(config):
+    features_dict = {}  # store each client feature
+    combine_feature = {}  #store feature conbination
+    for client_name in sorted(next(os.walk("./tmp/"))[1]): # get all dir from "./tmp/" path
+        for version_num in next(os.walk(f"./tmp/{client_name}"))[1]:  
+            print("client_name",client_name,"version_num",version_num)
+            features_dict[client_name+"_"+version_num] = np.load(f"./tmp/{client_name}/{version_num}/real_features.npy",allow_pickle=True)
+            if client_name != "clients_1":
+                client1_version = version_num.split("_")[-1]
+                cur_version = version_num.split("_")[0]
+                combine_feature[version_num] = tf.concat([features_dict["clients_1"+"_"+client1_version],features_dict[client_name+"_"+version_num]],0)
+        ## combine label
+        if client_name == "clients_1":
+            labels = np.load(f"./tmp/{client_name}/{version_num}/features_label.npy",allow_pickle=True)
+        else:  #for client_2
+            cur_label = np.load(f"./tmp/{client_name}/{version_num}/features_label.npy",allow_pickle=True)
+            labels = tf.concat([labels,cur_label],0)
+    for key,values in combine_feature.items():
+        client1_version = key.split("_")[-1]
+        client2_version = key.split("_")[0]
+        show_features_distribution(config, values, labels, client1_version, f'npy_client1_version_{client1_version}_client2_version_{client2_version}')
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     # General command line arguments for all models
