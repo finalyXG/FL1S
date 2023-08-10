@@ -1,10 +1,41 @@
 import tensorflow as tf
-from models.example_model import Classifier, C_Discriminator,C_Generator,AC_Discriminator,AC_Generator
+from models.example_model import Classifier, C_Discriminator,C_Generator, AC_Discriminator, AC_Generator
 from trainers.example_trainer import Trainer
+from data_loader.data_generator import DataGenerator
 from tensorboard.plugins.hparams import api as hp
+import numpy as np
 import os
-import time
-def clients_main(config,client_data, all_test_x,all_test_y,client_name):
+import argparse
+import pickle
+import random
+import openpyxl
+
+def clients_main(config):
+    client_name = config.clients_name
+    data = DataGenerator(config)
+    if config.use_features_central:
+        suffix = f"_with_{config.features_central_version}" #indicate clients_1 version features center
+        with open(f'tmp/clients_1/{config.features_central_version}/features_central.pkl','rb') as fp: 
+            pre_features_central = pickle.load(fp) #load features_central pre-saved
+    else:#for clients_1
+        suffix = ""
+        pre_features_central = None
+
+    if not os.path.exists(f"tmp/{client_name}"):
+        version_num = 0
+        #create new exccel to record metrics in cls best local acc
+        workbook = openpyxl.Workbook() 
+        worksheet = workbook.create_sheet("0", 0)
+        for col_num,col_index in enumerate(["version_num",'w','Train_acc',"Test_local acc", "Test_global acc","Cos_loss"]):
+            worksheet.cell(row=1, column=col_num+1, value = col_index) 
+    else:
+        file_list = next(os.walk(f"./tmp/{client_name}"))[1]   #get all dir in path
+        file_list = [int(i.split("_")[0]) for i in file_list] 
+        file_list.sort()
+        version_num = file_list[-1]+1  #get latest version num + 1
+        workbook = openpyxl.load_workbook(f'./tmp/{client_name}/metrics_record.xlsx')
+        worksheet = workbook['0'] 
+
     HP_BATCH_SIZE = hp.HParam("batch_size", hp.Discrete([64]))
     HP_LEARNING_RATE = hp.HParam("learning_rate", hp.Discrete([0.0005]))#hp.RealInterval(0.001, 0.1))
     # HP_GAN_VERSION = hp.HParam("gan_version", hp.Discrete(['ACGAN']))
