@@ -18,48 +18,42 @@ import time
 import pickle
 import random
 
-    except:
-        print("missing or invalid arguments")
-        exit(0)
-
-    # create the experiments dirs
-    create_dirs([config.summary_dir, config.checkpoint_dir])
-
-    data = DataGenerator(config)
-    client_names= list(data.clients.keys())
-    random.shuffle(client_names)
-    local_acc_list = []
-    global_acc_list = []
-    for index,client_name in enumerate(client_names):
-        local_acc, global_acc, fake_features = clients_main(config, data.clients[client_name], data.test_x,data.test_y, client_name)
-        local_acc_list.append(local_acc)
-        global_acc_list.append(global_acc)
-        if index != 0:
-            compare_feature = tf.concat([compare_feature,fake_features],0)
-        else:
-            compare_feature = fake_features
-
-    reshape_compare_feature = tf.reshape(compare_feature,[config.num_clients*config.test_feature_num,-1])
-
-    tsne = TSNE(n_components=2, verbose=1, random_state=123)
-    z = tsne.fit_transform(reshape_compare_feature)
+def show_features_distribution(config, all_features, features_label, client1_version,version):
+    ## get coresponding clients_1 feature center
+    with open(f'tmp/clients_1/{client1_version}/features_central.pkl','rb') as fp: 
+        features_central = pickle.load(fp)
+        central_label = list(features_central.keys())
+        central_features = np.array(list(features_central.values())).reshape([config.num_classes,-1])
+    ##show features distribution generate from each client
+    reshape_features = tf.reshape(all_features,[config.num_clients * config.test_feature_num,-1])
+    reshape_features = tf.concat([reshape_features, central_features],0)  #add feature center 
+    tsne = TSNE(n_components=2, verbose=1, random_state=config.random_seed)
+    z = tsne.fit_transform(reshape_features)
 
     df = pd.DataFrame()
     df["comp-1"] = z[:,0]
     df["comp-2"] = z[:,1]
-    #transfor one_hot to interge
-    labels = np.argmax(data.test_y[:config.test_feature_num], axis=1)
-    #show discriminator output
+    #transfor one_hot to int
+    labels = np.argmax(features_label, axis=1)
+    labels = tf.concat([labels, central_label],0)   #add feature center label
+    # distinguish each client feature
     for index,num in enumerate(range(0, config.num_clients*config.test_feature_num, config.test_feature_num)):
-        df.loc[num:num+config.test_feature_num-1,'y'] = "client_%d"%index
-        df.loc[num:num+config.test_feature_num-1,'classes'] = labels 
+        df.loc[num:num+config.test_feature_num-1,'y'] = "client_%d"%(index+1)
+    df.loc[config.num_clients*config.test_feature_num:,'y'] = "client_1 center"
 
-    sns.scatterplot(x="comp-1", y="comp-2", hue=df.classes.tolist(), style=df.y.tolist(),
+    df['classes'] = labels 
+
+    ax = sns.scatterplot(x="comp-1", y="comp-2", hue=df.classes.tolist(), style=df.y.tolist(),
                     palette=sns.color_palette("hls", 10),
                     data=df)
-    plt.savefig("compare_client_fake_features_img.png")
-    # plt.close()
-
+    
+    sns.move_legend(ax, "upper left", bbox_to_anchor=(1, 1))
+    for i,label in zip(z[-10:],central_label):
+        ax.text(i[0], i[1], label)
+    if not os.path.exists('./img/'):
+        os.makedirs('./img/')
+    plt.savefig("./img/%s.png"%version,bbox_inches='tight')
+    plt.close()
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
