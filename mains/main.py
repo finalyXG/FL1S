@@ -19,13 +19,14 @@ import pickle
 import random
 
 def show_features_distribution(config, all_features, features_label, client1_version,version):
+    num_clients = len(version.split("_"))
     ## get coresponding clients_1 feature center
     with open(f'tmp/clients_1/{client1_version}/features_central.pkl','rb') as fp: 
         features_central = pickle.load(fp)
         central_label = list(features_central.keys())
         central_features = np.array(list(features_central.values())).reshape([config.num_classes,-1])
     ##show features distribution generate from each client
-    reshape_features = tf.reshape(all_features,[config.num_clients * config.test_feature_num,-1])
+    reshape_features = tf.reshape(all_features,[num_clients * config.test_feature_num,-1])
     reshape_features = tf.concat([reshape_features, central_features],0)  #add feature center 
     tsne = TSNE(n_components=2, verbose=1, random_state=config.random_seed)
     z = tsne.fit_transform(reshape_features)
@@ -37,12 +38,11 @@ def show_features_distribution(config, all_features, features_label, client1_ver
     labels = np.argmax(features_label, axis=1)
     labels = tf.concat([labels, central_label],0)   #add feature center label
     # distinguish each client feature
-    for index,num in enumerate(range(0, config.num_clients*config.test_feature_num, config.test_feature_num)):
+    for index,num in enumerate(range(0, num_clients*config.test_feature_num, config.test_feature_num)):
         df.loc[num:num+config.test_feature_num-1,'y'] = "client_%d"%(index+1)
-    df.loc[config.num_clients*config.test_feature_num:,'y'] = "client_1 center"
+    df.loc[num_clients*config.test_feature_num:,'y'] = "client_1 center"
 
     df['classes'] = labels 
-
     ax = sns.scatterplot(x="comp-1", y="comp-2", hue=df.classes.tolist(), style=df.y.tolist(),
                     palette=sns.color_palette("hls", 10),
                     data=df)
