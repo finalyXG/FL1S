@@ -56,26 +56,36 @@ def show_features_distribution(config, all_features, features_label, client1_ver
     plt.close()
 
 def use_npy_generate_feature(config):
-    features_dict = {}  # store each client feature
     combine_feature = {}  #store feature conbination
     for client_name in sorted(next(os.walk("./tmp/"))[1]): # get all dir from "./tmp/" path
+        ## combine label
+        if client_name == "clients_1":
+            labels = np.load(f"./tmp/{client_name}/0/features_label.npy",allow_pickle=True)
+        else:  
+            version_num = next(os.walk(f"./tmp/{client_name}"))[1][0]
+            cur_label = np.load(f"./tmp/{client_name}/{version_num}/features_label.npy",allow_pickle=True)
+            labels = tf.concat([labels,cur_label],0)
+        
+        ## combine feature
         for version_num in next(os.walk(f"./tmp/{client_name}"))[1]:  
             print("client_name",client_name,"version_num",version_num)
-            features_dict[client_name+"_"+version_num] = np.load(f"./tmp/{client_name}/{version_num}/real_features.npy",allow_pickle=True)
+            feature = np.load(f"./tmp/{client_name}/{version_num}/real_features.npy",allow_pickle=True)
             if client_name != "clients_1":
                 client1_version = version_num.split("_")[-1]
                 cur_version = version_num.split("_")[0]
-                combine_feature[version_num] = tf.concat([features_dict["clients_1"+"_"+client1_version],features_dict[client_name+"_"+version_num]],0)
-        ## combine label
-        if client_name == "clients_1":
-            labels = np.load(f"./tmp/{client_name}/{version_num}/features_label.npy",allow_pickle=True)
-        else:  #for client_2
-            cur_label = np.load(f"./tmp/{client_name}/{version_num}/features_label.npy",allow_pickle=True)
-            labels = tf.concat([labels,cur_label],0)
-    for key,values in combine_feature.items():
-        client1_version = key.split("_")[-1]
-        client2_version = key.split("_")[0]
-        show_features_distribution(config, values, labels, client1_version, f'npy_client1_version_{client1_version}_client2_version_{client2_version}')
+                pre_client_num = int(client_name.split("_")[-1]) -1
+                pre_combine_feature = combine_feature[f"{client1_version}_clients_{pre_client_num}"]
+                for key,pre_feature in pre_combine_feature.items():
+                    combine_features = tf.concat([pre_feature,feature],0)
+                    cur_combine_version = f"{key}_{cur_version}"
+                    if f"{client1_version}_{client_name}" in combine_feature:
+                        combine_feature[f"{client1_version}_{client_name}"][cur_combine_version] = combine_features
+                    else:
+                        combine_feature[f"{client1_version}_{client_name}"] = {cur_combine_version: combine_features}
+                    show_features_distribution(config, combine_features, labels, client1_version, "npy"+cur_combine_version)
+            
+            else: #client_name == "clients_1":
+                combine_feature[f"{version_num}_{client_name}"] = {version_num: feature}
 
 def main(config):
     # cls_optimizer = tf.keras.optimizers.legacy.Adam()
