@@ -93,35 +93,43 @@ def main(config):
     #                                     cls=cls, max_to_keep=tf.Variable(1))
     cls = Classifier(config)
     data = DataGenerator(config)
-    clients_features = {}
     combine_feature = {}
 
     for client_name in sorted(next(os.walk(f"./tmp/"))[1]):
         (train_data, _) = data.clients[client_name]
         train_x,train_y = zip(*train_data)
         train_x,train_y = np.array(train_x),np.array(train_y)
+        cls(train_x)
         ## combine label
         if client_name == "clients_1":
             labels = train_y[:config.test_feature_num]
-        else:  #only generate 2 client img
+        else:  
             labels = tf.concat([labels, train_y[:config.test_feature_num]],0)
 
-        clients_features[client_name] = []
+        ## combine feature
         for version_num in next(os.walk(f"./tmp/{client_name}"))[1]: 
             print("client_name",client_name," version_num",version_num)
             checkpoint_dir = f'./tmp/{client_name}/{version_num}/cls_training_checkpoints/local/'
             # checkpoint.restore(tf.train.latest_checkpoint(checkpoint_dir)).expect_partial()
-            cls(train_x)
             cls.load_weights(tf.train.latest_checkpoint(checkpoint_dir))#.expect_partial()
             feature = cls.get_features(train_x[:config.test_feature_num])
-            clients_features[client_name].append(feature)
             if client_name != "clients_1":
                 client1_version = int(version_num.split("_")[-1])
                 cur_version = int(version_num.split("_")[0])
-                features = tf.concat([clients_features["clients_1"][client1_version],feature],0)
-                show_features_distribution(config, features, labels, client1_version, f'client1_version_{client1_version}_{client_name}_version_{cur_version}')
-            else:   #client_name == "clients_1"
-                combine_feature[version_num] = feature
+                pre_client_num = int(client_name.split("_")[-1]) -1
+
+                pre_combine_feature = combine_feature[f"{client1_version}_clients_{pre_client_num}"]
+                for key,pre_feature in pre_combine_feature.items():
+                    combine_features = tf.concat([pre_feature,feature],0)
+                    cur_combine_version = f"{key}_{cur_version}"
+                    if f"{client1_version}_{client_name}" in combine_feature:
+                        combine_feature[f"{client1_version}_{client_name}"][cur_combine_version] = combine_features
+                    else:
+                        combine_feature[f"{client1_version}_{client_name}"] = {cur_combine_version: combine_features}
+                    show_features_distribution(config, combine_features, labels, client1_version, cur_combine_version)
+            
+            else: #client_name == "clients_1":
+                combine_feature[f"{version_num}_{client_name}"] = {version_num: feature}
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
