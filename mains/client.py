@@ -154,27 +154,43 @@ if __name__ == '__main__':
         help="Name of client",
         default="clients_1",
     )
-    parser.add_argument("--use_features_central", type=bool, default=False)
+    parser.add_argument(
+        "--sample_ratio",
+        type=float,
+        help="Fraction of training data to make available to users",
+        default=1,
+    )
+    parser.add_argument(
+        "--alpha",
+        type=float,
+        help="Measure of heterogeneity (higher is more homogeneous, lower is more heterogenous)",
+        default=None,
+    )
+    parser.add_argument("--initial_client", type=int, default=1)  #use 0 and 1 to replace True and False
     parser.add_argument("--features_central_version", type=str, default="0")
     parser.add_argument("--cls_num_epochs", type=int, default=20)
-    parser.add_argument("--features_ouput_layer", help="The index of features output Dense layer",type=int, default=2)
+
+    parser.add_argument("--original_cls_loss_weight_list", type=int, nargs='+', default=[1])
+    parser.add_argument("--feat_loss_weight_list", type=int, nargs='+', default=[1])
+    parser.add_argument("--cos_loss_weight_list", type=int, nargs='+', default=[5]) 
+    parser.add_argument("--learning_rate_list", type=float, nargs='+', default=[0.001]) 
+    parser.add_argument("--batch_size_list", type=int, nargs='+', default=[64]) 
+
+    parser.add_argument("--features_ouput_layer", help="The index of features output Dense layer",type=int, default=-2)
     parser.add_argument("--GAN_num_epochs", type=int, default=1)
-    parser.add_argument("--num_iter_per_epoch", type=int, default=10)
     parser.add_argument("--test_feature_num", type=int, default=500)
     parser.add_argument("--test_sample_num", help="The number of real features and fake features in tsne img", type=int, default=500) 
     parser.add_argument("--image_size", type=int, default=28)
     parser.add_argument("--gp_weight", type=int, default=10.0)
     parser.add_argument("--discriminator_extra_steps", type=int, default=3)
     parser.add_argument("--num_examples_to_generate", type=int, default=16)
-    parser.add_argument("--buffer_size", type=int, default=5000)
     parser.add_argument("--latent_dim", type=int, default=16)
-    # parser.add_argument("--feature_dim", type=int, default=16)
     parser.add_argument("--max_to_keep", type=int, default=5)
     parser.add_argument("--num_classes", type=int, default=10)
 
     parser.add_argument("--num_clients", type=int, default=2)
-    parser.add_argument("--client_train_num", type=int, default=5000)
-    parser.add_argument("--client_test_num", type=int, default=5000)
+    parser.add_argument("--client_train_num", type=int, default=1000)
+    parser.add_argument("--client_test_num", type=int, default=1000)
     parser.add_argument("--random_seed", type=int, default=10)
     parser.add_argument("--data_random_seed", type=int, default=1693)
 
@@ -182,10 +198,10 @@ if __name__ == '__main__':
     parser.add_argument("--logdir", type=str, default="logs/hparam_tuning")
 
     args = parser.parse_args()
-    args.use_features_central = bool(args.use_features_central)
+    args.initial_client = bool(args.initial_client)
 
     print("client:", args.clients_name)
-    print("Whether use features central:", args.use_features_central)
+    print("Whether initial_client:", args.initial_client)
     print("features_central_version:", args.features_central_version)
     print("client_train_num:", args.client_train_num)
     print("client_test_num:", args.client_test_num)
