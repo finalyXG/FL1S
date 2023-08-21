@@ -27,7 +27,7 @@ def create_feature_dataset(config, client_data):
     # feature, labels = zip(*feature_dataset)
     # print("after feature_len",len(labels))
     feature_dataset = tf.data.Dataset.from_tensor_slices(
-            (np.array(feature), np.array(labels))).shuffle(len(feature))
+            (np.array(feature), np.array(labels))).shuffle(640)
     return feature_dataset
 
 def clients_main(config):
