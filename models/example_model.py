@@ -79,6 +79,44 @@ class Classifier(BaseModel):
         for layer in self.feature_layers[:self.config.features_ouput_layer]:
             x = layer(x)
         return x
+
+#Classifier in fed_cvae
+# class Classifier(BaseModel):
+#     def __init__(self,config):
+#         super(Classifier, self).__init__(config=config)
+#         self.cov_1 = Conv2D(32, kernel_size=(5, 5), input_shape=(28,28,))
+#         self.pool_1 = MaxPooling2D((2, 2))
+#         self.cov_2 = Conv2D(64, kernel_size=(5, 5))
+#         self.pool_2 = MaxPooling2D((2, 2))
+#         self.flatten = Flatten()
+#         self.dense_1 = Dense(512, activation='relu')
+#         self.dense_2 = Dense(self.config.num_classes, activation='softmax')
+#         self.feature_layers = [self.dense_1,self.dense_2]
+
+#     def call(self, inputs):
+#         x = self.cov_1(inputs)
+#         x = self.pool_1(x)
+#         x = self.cov_2(x)
+#         x = self.pool_2(x)
+#         x = self.flatten(x)
+#         x = self.dense_1(x)
+#         return self.dense_2(x)
+    
+#     def call_2(self, x):
+        
+#         for layer in self.feature_layers[self.config.features_ouput_layer:]:
+#             x = layer(x)
+#         return x
+    
+#     def get_features(self, inputs):
+#         x = self.cov_1(inputs)
+#         x = self.pool_1(x)
+#         x = self.cov_2(x)
+#         x = self.pool_2(x)
+#         x = self.flatten(x)
+#         for layer in self.feature_layers[:self.config.features_ouput_layer]:
+#             x = layer(x)
+#         return x
     
 class C_Discriminator(BaseModel):
     def __init__(self,config):
