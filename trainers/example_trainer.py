@@ -371,10 +371,10 @@ class Trainer:
         return fake_features
     
     def generate_real_features(self):
-        return self.cls.get_features(self.train_x[:self.config.test_feature_num])
+        return self.cls.get_features(self.train_x)
     
     def get_features_label(self):
-        return self.train_y[:self.config.test_feature_num]
+        return self.train_y
     
     def generate_tsne_images(self):
         noise = tf.random.normal([self.config.test_sample_num, self.latent_dim])
