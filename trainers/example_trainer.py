@@ -49,8 +49,12 @@ class Trainer:
         self.global_cls_acc_list = []
         self.GAN_version = "ACGAN" #hparams['gan_version']
         self.batch_size = hparams['batch_size']
-        self.distance_loss_weight = hparams['distance_loss_weight']
         self.learning_rate = hparams['learning_rate']
+
+        self.cos_loss_weight = hparams['cos_loss_weight']
+        self.original_cls_loss_weight = hparams['original_cls_loss_weight']
+        self.feat_loss_weight = hparams['feat_loss_weight']
+
         self.image_size = config.image_size
         self.gp_weight = config.gp_weight
         self.num_classes = config.num_classes
@@ -64,7 +68,8 @@ class Trainer:
         
         self.loss_fn_gan_binary = tf.keras.losses.BinaryCrossentropy(from_logits=True)
         self.loss_fn_gan_categorical = tf.keras.losses.CategoricalCrossentropy(from_logits=True) #int
-        self.loss_fn_cls = tf.keras.losses.CategoricalCrossentropy(from_logits=False)
+        self.img_loss_fn_cls = tf.keras.losses.CategoricalCrossentropy(from_logits=False)
+        self.feature_loss_fn_cls = tf.keras.losses.CategoricalCrossentropy(from_logits=False)
         
         self.disc_test_binary_accuracy = tf.keras.metrics.BinaryAccuracy(name='disc_test_binary_accuracy')
         self.disc_test_categorical_accuracy = tf.keras.metrics.CategoricalAccuracy(name='disc_test_categorical_accuracy')
@@ -74,6 +79,7 @@ class Trainer:
         self.cls_train_loss = tf.keras.metrics.Mean(name='cls_train_loss')
         self.cls_train_distance_loss = tf.keras.metrics.Mean(name='cls_train_distance_loss')
         self.cls_train_classify_loss = tf.keras.metrics.Mean(name='cls_train_classify_loss')
+        self.cls_train_feature_loss = tf.keras.metrics.Mean(name='cls_train_feature_loss')
 
         self.cls_train_accuracy = tf.keras.metrics.CategoricalAccuracy(name='cls_train_accuracy')
         self.cls_test_loss = tf.keras.metrics.Mean(name='cls_test_loss')
@@ -109,18 +115,22 @@ class Trainer:
         return self.init
 
     # @tf.function   #means cancel eager mode --> able to convert tensor to array
-    def train_cls_step(self,images, labels):
+    def train_cls_step(self,images, labels, features=None, features_label=None):
         with tf.GradientTape() as tape:
             predictions = self.cls(images, training=True)
-            loss = self.loss_fn_cls(labels, predictions)
+            loss = self.img_loss_fn_cls(labels, predictions) * self.original_cls_loss_weight
             self.cls_train_classify_loss(loss)
             distance_loss = 0.0
+            feature_loss = 0.0
             if self.pre_features_central is not None:
                 distance_loss = self.count_features_central_distance(images, labels)
-            loss += (distance_loss*self.distance_loss_weight)
+                feature_predictions = self.cls.call_2(features)
+                feature_loss = self.feature_loss_fn_cls(features_label, feature_predictions)
+            loss += (distance_loss*self.cos_loss_weight)
+            loss += (feature_loss*self.feat_loss_weight)
         gradients = tape.gradient(loss, self.cls.trainable_variables)
         self.cls_optimizer.apply_gradients(zip(gradients, self.cls.trainable_variables))
-        return self.cls_train_loss(loss), self.cls_train_accuracy(labels, predictions), self.cls_train_distance_loss(distance_loss)
+        return self.cls_train_loss(loss), self.cls_train_accuracy(labels, predictions), self.cls_train_distance_loss(distance_loss),self.cls_train_feature_loss(feature_loss)
     
     @tf.function
     def local_test_cls_step(self,images, labels):
@@ -168,14 +178,23 @@ class Trainer:
                                         cls=self.cls, max_to_keep=tf.Variable(1))
         #read latest_checkpoint
         # checkpoint.restore(tf.train.latest_checkpoint('./tmp/%s/13_with_0/cls_training_checkpoints/'%(self.client_name)+'local')) 
+
+        if feature_data:
+            self.train_data  = tf.data.Dataset.zip((self.train_data,feature_data)).batch(self.batch_size,drop_remainder=True)
+        
         for cur_epoch in range(self.cls.cur_epoch_tensor.numpy(), self.config.cls_num_epochs + 1, 1):
-            for x, y  in self.train_data:
-                self.train_cls_step(x, y)
-            
+            if feature_data:
+                for (img,img_label), (features,features_label) in self.train_data:
+                    self.train_cls_step(img, img_label, features, features_label)
+            else:
+                for batch_idx,(x, y)  in enumerate(self.train_data.batch(self.batch_size,drop_remainder=True)):
+                    self.train_cls_step(x,y)
+
             with self.CLS_train_summary_writer.as_default():
                 tf.summary.scalar('cls_loss_'+self.client_name, self.cls_train_loss.result(), step=cur_epoch) 
                 tf.summary.scalar('cls_accuracy_'+self.client_name, self.cls_train_accuracy.result(), step=cur_epoch)
                 tf.summary.scalar('cls_distance_loss_'+self.client_name, self.cls_train_distance_loss.result(), step=cur_epoch) 
+                tf.summary.scalar('cls_feature_loss_'+self.client_name, self.cls_train_feature_loss.result(), step=cur_epoch) 
                 # tf.summary.scalar('cls_classify_loss_'+self.client_name, self.cls_train_classify_loss.result(), step=cur_epoch) 
 
             self.cls.cur_epoch_tensor.assign_add(1)
