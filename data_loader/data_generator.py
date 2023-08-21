@@ -27,8 +27,8 @@ class DataGenerator:
         self.y = tf.keras.utils.to_categorical(self.y, config.num_classes)
         self.test_y = tf.keras.utils.to_categorical(self.test_y, config.num_classes)
 
-        self.clients = self.split_data_dirichlet()
-        # self.clients = self.create_clients(config.num_clients)
+        # self.clients = self.split_data_dirichlet()
+        self.clients = self.create_clients(config.num_clients)
         
     def next_batch(self, batch_size):
         idx = np.random.choice(len(self.y), batch_size)
