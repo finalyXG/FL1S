@@ -5,9 +5,9 @@ import random
 class DataGenerator:
     def __init__(self, config):
         self.config = config
-        tf.random.set_seed(config.random_seed)
-        np.random.seed(config.random_seed)
-        random.seed(config.random_seed)
+        tf.random.set_seed(config.data_random_seed)
+        np.random.seed(config.data_random_seed)
+        random.seed(config.data_random_seed)
         mnist = tf.keras.datasets.mnist
 
         (self.input, self.y), (self.test_x, self.test_y) = mnist.load_data()

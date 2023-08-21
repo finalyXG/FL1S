@@ -156,6 +156,7 @@ if __name__ == '__main__':
     parser.add_argument("--client_train_num", type=int, default=5000)
     parser.add_argument("--client_test_num", type=int, default=5000)
     parser.add_argument("--random_seed", type=int, default=10)
+    parser.add_argument("--data_random_seed", type=int, default=1693)
 
     parser.add_argument("--exp_name", type=str, default="example")
     parser.add_argument("--logdir", type=str, default="logs/hparam_tuning")
