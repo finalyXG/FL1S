@@ -134,13 +134,13 @@ class Trainer:
     
     @tf.function
     def local_test_cls_step(self,images, labels):
-        predictions = self.cls(images, training=True)
-        loss = self.loss_fn_cls(labels, predictions)
+        predictions = self.cls(images, training=False)
+        loss = self.img_loss_fn_cls(labels, predictions)
         return self.cls_test_loss(loss), self.cls_test_accuracy(labels, predictions)
     
     @tf.function
     def global_test_cls_step(self,images, labels):
-        predictions = self.cls(images, training=True)
+        predictions = self.cls(images, training=False)
         return self.global_cls_test_accuracy(labels, predictions)
     
     def get_features_central(self,images, labels):  
