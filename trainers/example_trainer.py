@@ -155,17 +155,19 @@ class Trainer:
             accumulate_loss += 1 - cos_sim
         return accumulate_loss / len(labels)
 
-    def train_cls(self,worksheet, suffix):
-        checkpoint_dir = './tmp/%s/%s%s/cls_training_checkpoints/'%(self.client_name,self.version_num,suffix)
+    def train_cls(self, worksheet, feature_data, suffix):
+        checkpoint_dir = './tmp/%s/%s%s/cls_training_checkpoints/'%(self.client_name, self.version_num,suffix)
         if not os.path.exists(checkpoint_dir):
-            os.makedirs(checkpoint_dir+'local')
+            os.makedirs(checkpoint_dir+'local')  #store model weight
             os.makedirs(checkpoint_dir+'global')
-        # checkpoint_local_prefix = os.path.join(checkpoint_dir+'local', "ckpt")
-        # checkpoint_global_prefix = os.path.join(checkpoint_dir+'global', "ckpt")
-        # checkpoint = tf.train.Checkpoint( optimizer=self.cls_optimizer,
-        #                                 cls=self.cls, max_to_keep=tf.Variable(1))
+            os.makedirs(checkpoint_dir+'local_checkpoint')   #store checkpoint
+            os.makedirs(checkpoint_dir+'global_checkpoint')
+        checkpoint_local_prefix = os.path.join(checkpoint_dir+'local_checkpoint', "ckpt")
+        checkpoint_global_prefix = os.path.join(checkpoint_dir+'global_checkpoint', "ckpt")
+        checkpoint = tf.train.Checkpoint( optimizer=self.cls_optimizer,
+                                        cls=self.cls, max_to_keep=tf.Variable(1))
         #read latest_checkpoint
-        # checkpoint.restore(tf.train.latest_checkpoint(checkpoint_dir+'local')) 
+        # checkpoint.restore(tf.train.latest_checkpoint('./tmp/%s/13_with_0/cls_training_checkpoints/'%(self.client_name)+'local')) 
         for cur_epoch in range(self.cls.cur_epoch_tensor.numpy(), self.config.cls_num_epochs + 1, 1):
             for x, y  in self.train_data:
                 self.train_cls_step(x, y)
@@ -187,7 +189,7 @@ class Trainer:
                 tf.summary.scalar('cls_accuracy_'+self.client_name, self.cls_test_accuracy.result(), step=cur_epoch)
                 tf.summary.scalar('compare_cls_accuracy_'+self.client_name, self.cls_test_accuracy.result(), step=cur_epoch)
             
-            for(X_test, Y_test) in self.all_test_data:
+            for (X_test, Y_test) in self.all_test_data:
                 self.global_test_cls_step(X_test, Y_test)
 
             with self.CLS_compare_test_acc_summary_writer.as_default():
@@ -199,28 +201,37 @@ class Trainer:
             if self.global_cls_test_accuracy.result() == max(self.global_cls_acc_list):
                 # self.cls.save_weights(checkpoint_global_path.format(epoch=cur_epoch))
                 del_list = os.listdir(checkpoint_dir+'global')
-                for f in del_list:
+                del_list2 = os.listdir(checkpoint_dir+'global_checkpoint')
+                for f,f2 in zip(del_list,del_list2):
                     file_path = os.path.join(checkpoint_dir+'global', f)
+                    file_path2 = os.path.join(checkpoint_dir+'global_checkpoint', f2)
                     if os.path.isfile(file_path):
                         os.remove(file_path)
-                # checkpoint.save(file_prefix = checkpoint_global_prefix)
+                    if os.path.isfile(file_path2):
+                        os.remove(file_path2)
+                checkpoint.save(file_prefix = checkpoint_global_prefix)
                 self.cls.save_weights(f"{checkpoint_dir}/global/cp-{cur_epoch:04d}.ckpt")
-
+                #record metric in best global acc into excel
+                for col_num,col_value in enumerate([cur_epoch,  self.global_cls_test_accuracy.result(), self.cls_test_accuracy.result()]):
+                    worksheet.cell(row=int(self.version_num)+2, column=col_num+11, value = float(col_value))
 
             if self.cls_test_accuracy.result() == max(self.local_cls_acc_list):
                 # self.cls.save_weights(checkpoint_local_path.format(epoch=cur_epoch))
                 del_list = os.listdir(checkpoint_dir+'local')
-                for f in del_list:
+                del_list2 = os.listdir(checkpoint_dir+'local_checkpoint')
+                for f,f2 in zip(del_list,del_list2):
                     file_path = os.path.join(checkpoint_dir+'local', f)
+                    file_path2 = os.path.join(checkpoint_dir+'local_checkpoint', f2)
                     if os.path.isfile(file_path):
                         os.remove(file_path)
-                # checkpoint.save(file_prefix = checkpoint_local_prefix)
-             
-                #record metric into excel
-                for col_num,col_value in enumerate([self.version_num, self.distance_loss_weight, self.cls_train_accuracy.result(),self.cls_test_accuracy.result(), self.global_cls_test_accuracy.result(),self.cls_train_distance_loss.result()]):
-                        worksheet.cell(row=int(self.version_num)+2, column=col_num+1, value = float(col_value))
-                # pre_features_central, real_features = self.get_features_central(self.train_x,self.train_y), self.generate_real_features()
+                    if os.path.isfile(file_path2):
+                        os.remove(file_path2)
+                checkpoint.save(file_prefix = checkpoint_local_prefix)
                 self.cls.save_weights(f"{checkpoint_dir}/local/cp-{cur_epoch:04d}.ckpt")
+
+                #record metric in best local acc into excel
+                for col_num,col_value in enumerate([self.version_num, self.original_cls_loss_weight, self.cos_loss_weight, self.feat_loss_weight, cur_epoch, self.cls_train_accuracy.result(),self.cls_test_accuracy.result(), self.global_cls_test_accuracy.result(),self.cls_train_distance_loss.result()]):
+                    worksheet.cell(row=int(self.version_num)+2, column=col_num+1, value = float(col_value))
 
             template = 'Epoch {}, Loss: {}, Accuracy: {}, Test Loss: {}, Test Accuracy: {}, Global Test Accuracy: {}'
             print (template.format(cur_epoch+1,
@@ -237,17 +248,18 @@ class Trainer:
             self.cls_test_accuracy.reset_states()
             self.global_cls_test_accuracy.reset_states()
             self.cls_train_distance_loss.reset_states()
-
-        max_local_acc_index = self.local_cls_acc_list.index(max(self.local_cls_acc_list))
-        max_global_acc_index = self.global_cls_acc_list.index(max(self.global_cls_acc_list))
-        print("max_local_acc_index",max_local_acc_index,"max_local_acc",max(self.local_cls_acc_list))
-        print("max_global_acc_index",max_global_acc_index,"max_global_acc", max(self.global_cls_acc_list))
+        best_global_acc = max(self.global_cls_acc_list)
+        best_local_acc = max(self.local_cls_acc_list)
+        max_local_acc_index = self.local_cls_acc_list.index(best_local_acc)
+        max_global_acc_index = self.global_cls_acc_list.index(best_global_acc)
+        print("max_local_acc_index",max_local_acc_index,"max_local_acc",best_local_acc)
+        print("max_global_acc_index",max_global_acc_index,"max_global_acc", best_global_acc)
         
         #load model in best local test acc
         # checkpoint.restore(tf.train.latest_checkpoint(checkpoint_dir+'local')) 
         latest = tf.train.latest_checkpoint(checkpoint_dir+'local')
         self.cls.load_weights(latest)
-        return self.get_features_central(self.train_x,self.train_y), self.generate_real_features()
+        return self.get_features_central(self.train_x,self.train_y), self.generate_real_features(), best_global_acc, best_local_acc
     
     #features_version
     def gradient_penalty(self, real_features, generated_features):
