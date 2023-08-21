@@ -39,11 +39,11 @@ class Trainer:
         #     print(element," count: ", list(tmp).count(element))
 
         self.train_data = tf.data.Dataset.from_tensor_slices(
-        (self.train_x,self.train_y)).shuffle(hparams['batch_size']*10).batch(hparams['batch_size'],drop_remainder=True)
+        (self.train_x,self.train_y)).shuffle(len(self.train_y))
         self.test_data = tf.data.Dataset.from_tensor_slices(
-        (self.test_x,self.test_y)).shuffle(hparams['batch_size']*10).batch(hparams['batch_size'],drop_remainder=True)
+        (self.test_x,self.test_y)).shuffle(len(self.test_y)).batch(hparams['batch_size'],drop_remainder=True)
         self.all_test_data = tf.data.Dataset.from_tensor_slices(
-        (all_test_x,all_test_y)).shuffle(hparams['batch_size']*10).batch(hparams['batch_size'],drop_remainder=True)
+        (all_test_x,all_test_y)).shuffle(len(all_test_y)).batch(hparams['batch_size'],drop_remainder=True)
         
         self.local_cls_acc_list = []  
         self.global_cls_acc_list = []
