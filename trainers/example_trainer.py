@@ -93,21 +93,20 @@ class Trainer:
 
         current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
-        GAN_train_log_dir = os.path.join('logs/GAN_gradient_tape', client_name , current_time ,'train')
-        GAN_train_log_dir = 'logs/GAN_gradient_tape/' +client_name +"/"+ current_time + '/train'
-        GAN_test_log_dir = 'logs/GAN_gradient_tape/' +client_name +"/"+ current_time + '/test'
-        CLS_train_log_dir = 'logs/CLS_gradient_tape/' +client_name +"/"+ current_time + '/train'
-        CLS_test_log_dir = 'logs/CLS_gradient_tape/' +client_name +"/"+ current_time + '/test'
-        CLS_compare_test_log_dir = 'logs/CLS_gradient_tape/' +client_name +"/"+ current_time + '/global'
+        GAN_train_log_dir = 'logs/GAN_gradient_tape/' +client_name +"/"+ self.version_num + '/train'
+        GAN_test_log_dir = 'logs/GAN_gradient_tape/' +client_name +"/"+ self.version_num + '/test'
+        CLS_train_log_dir = 'logs/CLS_gradient_tape/' +client_name +"/"+ self.version_num + '/train'
+        CLS_test_log_dir = 'logs/CLS_gradient_tape/' +client_name +"/"+ self.version_num + '/test'
+        CLS_compare_test_log_dir = 'logs/CLS_gradient_tape/' +client_name +"/"+ self.version_num + '/global'
 
-        # generator_img_logdir = "logs/train_data/" +client_name +"/"+ current_time
+        # generator_img_logdir = "logs/train_data/" +client_name +"/"+ self.version_num
         self.GAN_train_summary_writer = tf.summary.create_file_writer(GAN_train_log_dir)
         self.GAN_test_summary_writer = tf.summary.create_file_writer(GAN_test_log_dir)
         self.CLS_train_summary_writer = tf.summary.create_file_writer(CLS_train_log_dir)
         self.CLS_test_summary_writer = tf.summary.create_file_writer(CLS_test_log_dir)
         self.CLS_compare_test_acc_summary_writer = tf.summary.create_file_writer(CLS_compare_test_log_dir)
         # self.generator_img_writer = tf.summary.create_file_writer(generator_img_logdir)
-        self.compare_fake_real_img_writer = tf.summary.create_file_writer( "logs/compare_fake_real_img/" +client_name +"/"+current_time)
+        self.compare_fake_real_img_writer = tf.summary.create_file_writer( "logs/compare_fake_real_img/" +client_name +"/"+self.version_num)
 
     def __call__(self):
         if self.init is None:
