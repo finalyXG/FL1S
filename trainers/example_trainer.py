@@ -196,7 +196,7 @@ class Trainer:
                 tf.summary.scalar('cls_accuracy_'+self.client_name, self.cls_train_accuracy.result(), step=cur_epoch)
                 tf.summary.scalar('cls_distance_loss_'+self.client_name, self.cls_train_distance_loss.result(), step=cur_epoch) 
                 tf.summary.scalar('cls_feature_loss_'+self.client_name, self.cls_train_feature_loss.result(), step=cur_epoch) 
-                # tf.summary.scalar('cls_classify_loss_'+self.client_name, self.cls_train_classify_loss.result(), step=cur_epoch) 
+                tf.summary.scalar('cls_classify_loss_'+self.client_name, self.cls_train_classify_loss.result(), step=cur_epoch) 
 
             self.cls.cur_epoch_tensor.assign_add(1)
 
@@ -280,6 +280,8 @@ class Trainer:
             self.cls_test_accuracy.reset_states()
             self.global_cls_test_accuracy.reset_states()
             self.cls_train_distance_loss.reset_states()
+            self.cls_train_feature_loss.reset_states()
+            self.cls_train_classify_loss.reset_states()
         best_global_acc = max(self.global_cls_acc_list)
         best_local_acc = max(self.local_cls_acc_list)
         max_local_acc_index = self.local_cls_acc_list.index(best_local_acc)
