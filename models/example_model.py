@@ -56,7 +56,7 @@ class Classifier(BaseModel):
         self.dense_1 = Dense(49, activation='relu', kernel_initializer='glorot_normal')
         self.dense_2 = Dense(16, activation='relu',kernel_initializer='glorot_normal')
         self.dense_3 = Dense(self.num_classes, activation='softmax', kernel_initializer='glorot_normal')
-        self.feature_layers = [self.dense_1,self.dense_2, self.dense_3]
+        self.feature_layers = [self.cov_1, self.cov_2, self.flatten, self.dense_1,self.dense_2, self.dense_3]
 
     def call(self, inputs):
         x = self.cov_1(inputs)
@@ -72,10 +72,7 @@ class Classifier(BaseModel):
             x = layer(x)
         return x
     
-    def get_features(self, inputs):
-        x = self.cov_1(inputs)
-        x = self.cov_2(x)
-        x = self.flatten(x)
+    def get_features(self, x):
         for layer in self.feature_layers[:self.config.features_ouput_layer]:
             x = layer(x)
         return x
