@@ -14,8 +14,13 @@ def create_feature_dataset(config, client_data):
     '''
     generate initial client feature to dataset
     '''
-    feature = np.load(f"./tmp/clients_1/{config.features_central_version}/real_features.npy",allow_pickle=True)
-    labels = np.load(f"./tmp/clients_1/{config.features_central_version}/features_label.npy",allow_pickle=True)
+    if config.use_assigned_epoch_feature:
+        path = f"./tmp/clients_1/{config.features_central_version}/assigned_epoch/{config.use_assigned_epoch_feature}/"
+    else:
+        path = f"./tmp/clients_1/{config.features_central_version}/"
+
+    feature = np.load(f"{path}/real_features.npy",allow_pickle=True)
+    labels = np.load(f"{path}/features_label.npy",allow_pickle=True)
     # (train_data, _) = client_data
     # client_train_data_num = len(train_data)
     # feature_dataset = list(zip(feature, labels))
@@ -35,7 +40,12 @@ def clients_main(config):
     data = DataGenerator(config)
     if not config.initial_client:  
         suffix = f"_with_{config.features_central_version}" #indicate clients_1 version features center
-        with open(f'tmp/clients_1/{config.features_central_version}/features_central.pkl','rb') as fp: 
+        if config.use_assigned_epoch_feature:
+            path = f'tmp/clients_1/{config.features_central_version}/assigned_epoch/{config.use_assigned_epoch_feature}/'
+        else:
+            path = f'tmp/clients_1/{config.features_central_version}/'
+
+        with open(f'{path}/features_central.pkl','rb') as fp: 
             pre_features_central = pickle.load(fp) #load features_central pre-saved
     else:#for clients_1
         suffix = ""
@@ -166,8 +176,10 @@ if __name__ == '__main__':
         help="Measure of heterogeneity (higher is more homogeneous, lower is more heterogenous)",
         default=None,
     )
-    parser.add_argument("--initial_client", type=int, default=1)  #use 0 and 1 to replace True and False
-    parser.add_argument("--features_central_version", type=str, default="0")
+    parser.add_argument("--initial_client", type=int, default=1)  #use 0 and 1 to replace False and True 
+    parser.add_argument("--initial_client_ouput_feat_epochs", type=int, nargs='+', default=[-1]) 
+    parser.add_argument("--features_central_version", type=str, default="0")  #use which version as initial client( only for initial_client==0)
+    parser.add_argument("--use_assigned_epoch_feature", type=int, default=0)  #use 0 means False( only for initial_client==0)
     parser.add_argument("--cls_num_epochs", type=int, default=20)
 
     parser.add_argument("--original_cls_loss_weight_list", type=int, nargs='+', default=[1])
@@ -205,4 +217,9 @@ if __name__ == '__main__':
     print("features_central_version:", args.features_central_version)
     print("client_train_num:", args.client_train_num)
     print("client_test_num:", args.client_test_num)
-    clients_main(args)
+    print("cls_num_epochs:", args.cls_num_epochs)
+    print("initial_client_ouput_feat_epoch:", args.initial_client_ouput_feat_epochs)
+    if args.initial_client_ouput_feat_epochs[0] <= args.cls_num_epochs:
+        clients_main(args)
+    else:
+        print("initial_client_ouput_feat_epochs must be smaller than cls_num_epochs")

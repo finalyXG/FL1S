@@ -14,6 +14,7 @@ from tensorboard.plugins.hparams import api as hp
 import shutil
 import time
 import random
+import pickle
 class Trainer:
     def __init__(self, client_name, version_num, client_data,all_test_x,all_test_y, pre_features_central, cls, discriminator, generator, config, hparams):
         self.client_name = client_name
@@ -22,6 +23,7 @@ class Trainer:
         self.discriminator = discriminator
         self.generator = generator
         self.config = config
+        self.initial_client_ouput_feat_epochs = config.initial_client_ouput_feat_epochs
         tf.random.set_seed(config.random_seed)
         np.random.seed(config.random_seed)
         random.seed(config.random_seed)
@@ -250,6 +252,18 @@ class Trainer:
                 #record metric in best local acc into excel
                 for col_num,col_value in enumerate([self.version_num, self.original_cls_loss_weight, self.cos_loss_weight, self.feat_loss_weight, cur_epoch, self.cls_train_accuracy.result(),self.cls_test_accuracy.result(), self.global_cls_test_accuracy.result(),self.cls_train_distance_loss.result()]):
                     worksheet.cell(row=int(self.version_num)+2, column=col_num+1, value = float(col_value))
+
+            if cur_epoch in self.initial_client_ouput_feat_epochs:
+                path = f"tmp/{self.client_name}/{self.version_num}{suffix}/assigned_epoch/{cur_epoch}/"
+                os.makedirs(path)
+                self.cls.save_weights(f"{path}/cp-{cur_epoch:04d}.ckpt")
+                features_central = self.get_features_central(self.train_x,self.train_y)
+                real_features = self.generate_real_features()
+                with open(f"{path}/features_central.pkl","wb") as fp:
+                    pickle.dump(features_central, fp)
+                np.save(f"{path}/real_features",real_features)
+                np.save(f"{path}/features_label",self.train_y)
+
 
             template = 'Epoch {}, Loss: {}, Accuracy: {}, Test Loss: {}, Test Accuracy: {}, Global Test Accuracy: {}'
             print (template.format(cur_epoch+1,
