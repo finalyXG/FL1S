@@ -182,9 +182,9 @@ if __name__ == '__main__':
     parser.add_argument("--use_assigned_epoch_feature", type=int, default=0)  #use 0 means False( only for initial_client==0)
     parser.add_argument("--cls_num_epochs", type=int, default=20)
 
-    parser.add_argument("--original_cls_loss_weight_list", type=int, nargs='+', default=[1])
-    parser.add_argument("--feat_loss_weight_list", type=int, nargs='+', default=[1])
-    parser.add_argument("--cos_loss_weight_list", type=int, nargs='+', default=[5]) 
+    parser.add_argument("--original_cls_loss_weight_list", type=float, nargs='+', default=[1.0])
+    parser.add_argument("--feat_loss_weight_list", type=float, nargs='+', default=[1.0])
+    parser.add_argument("--cos_loss_weight_list", type=float, nargs='+', default=[5.0]) 
     parser.add_argument("--learning_rate_list", type=float, nargs='+', default=[0.001]) 
     parser.add_argument("--batch_size_list", type=int, nargs='+', default=[64]) 
 
