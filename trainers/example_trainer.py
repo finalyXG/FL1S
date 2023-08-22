@@ -162,6 +162,8 @@ class Trainer:
         accumulate_loss = 0
         for vector,label in zip(feature,labels):  
             pre_vector = self.pre_features_central[label]
+            vector = tf.reshape(vector, [-1,])
+            pre_vector = tf.reshape(pre_vector, [-1,])
             cos_sim = tf.tensordot(vector, pre_vector,axes=1)/(tf.linalg.norm(vector)*tf.linalg.norm(pre_vector)+0.001)
             accumulate_loss += 1 - cos_sim
         return accumulate_loss / len(labels)
