@@ -15,9 +15,9 @@ def create_feature_dataset(config, client_data):
     generate initial client feature to dataset
     '''
     if config.use_assigned_epoch_feature:
-        path = f"./tmp/clients_1/{config.features_central_version}/assigned_epoch/{config.use_assigned_epoch_feature}/"
+        path = f"./tmp/clients_1/{config.features_central_version}/assigned_epoch/{config.use_assigned_epoch_feature}/{config.features_ouput_layer[0]}_layer_output/"
     else:
-        path = f"./tmp/clients_1/{config.features_central_version}/"
+        path = f"./tmp/clients_1/{config.features_central_version}/{config.features_ouput_layer[0]}_layer_output/"
 
     feature = np.load(f"{path}/real_features.npy",allow_pickle=True)
     labels = np.load(f"{path}/features_label.npy",allow_pickle=True)
@@ -41,9 +41,9 @@ def clients_main(config):
     if not config.initial_client:  
         suffix = f"_with_{config.features_central_version}" #indicate clients_1 version features center
         if config.use_assigned_epoch_feature:
-            path = f'tmp/clients_1/{config.features_central_version}/assigned_epoch/{config.use_assigned_epoch_feature}/'
+            path = f'tmp/clients_1/{config.features_central_version}/assigned_epoch/{config.use_assigned_epoch_feature}/{config.features_ouput_layer[0]}_layer_output/'
         else:
-            path = f'tmp/clients_1/{config.features_central_version}/'
+            path = f'tmp/clients_1/{config.features_central_version}/{config.features_ouput_layer[0]}_layer_output/'
 
         with open(f'{path}/features_central.pkl','rb') as fp: 
             pre_features_central = pickle.load(fp) #load features_central pre-saved
@@ -147,10 +147,15 @@ def clients_main(config):
                             tf.summary.scalar("best_global_acc", best_global_acc, step=1)
                             tf.summary.scalar("best_local_acc", best_local_acc, step=1)
                             if client_name == "clients_1":
-                                with open(f"tmp/clients_1/{version_num}{suffix}/features_central.pkl","wb") as fp:
-                                    pickle.dump(cur_features_central, fp)
-                            np.save(f"tmp/{client_name}/{version_num}{suffix}/real_features",real_features)
-                            np.save(f"tmp/{client_name}/{version_num}{suffix}/features_label",features_label)
+                                for k,v in cur_features_central.items():
+                                    os.makedirs(f"tmp/{client_name}/{version_num}{suffix}/{k}_layer_output")
+                                    with open(f"tmp/clients_1/{version_num}{suffix}/{k}_layer_output/features_central.pkl","wb") as fp:
+                                        pickle.dump(v, fp)
+                            for k,v in real_features.items():
+                                if not os.path.exists(f"tmp/{client_name}/{version_num}{suffix}/{k}_layer_output"):
+                                    os.makedirs(f"tmp/{client_name}/{version_num}{suffix}/{k}_layer_output")
+                                np.save(f"tmp/{client_name}/{version_num}{suffix}/{k}_layer_output/real_features",v)
+                                np.save(f"tmp/{client_name}/{version_num}{suffix}/{k}_layer_output/features_label",features_label)
                         version_num += 1
                 
     workbook.save(f'./tmp/{client_name}/metrics_record.xlsx')
@@ -174,7 +179,7 @@ if __name__ == '__main__':
         "--alpha",
         type=float,
         help="Measure of heterogeneity (higher is more homogeneous, lower is more heterogenous)",
-        default=None,
+        default=10,
     )
     parser.add_argument("--initial_client", type=int, default=1)  #use 0 and 1 to replace False and True 
     parser.add_argument("--initial_client_ouput_feat_epochs", type=int, nargs='+', default=[-1]) 
@@ -190,7 +195,7 @@ if __name__ == '__main__':
     parser.add_argument("--learning_rate_list", type=float, nargs='+', default=[0.001]) 
     parser.add_argument("--batch_size_list", type=int, nargs='+', default=[64]) 
 
-    parser.add_argument("--features_ouput_layer", help="The index of features output Dense layer",type=int, default=-2)
+    parser.add_argument("--features_ouput_layer", help="The index of features output Dense layer",type=int, nargs='+', default=[-2])
     parser.add_argument("--GAN_num_epochs", type=int, default=1)
     parser.add_argument("--test_feature_num", type=int, default=500)
     parser.add_argument("--test_sample_num", help="The number of real features and fake features in tsne img", type=int, default=500) 

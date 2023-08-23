@@ -144,23 +144,29 @@ class Trainer:
         predictions = self.cls(images, training=False)
         return self.global_cls_test_accuracy(labels, predictions)
     
-    def get_features_central(self,images, labels):  
+    def get_features_central(self, images, labels):  
         #using client train dataset to generate features central
-        feature_avg_dic = {}
+        # feature_avg_dic = {}
         labels = np.argmax(labels, axis=1)
+        feature_output_layer_feature_avg_dic = {i:{} for i in self.config.features_ouput_layer}
         for label in set(labels):
             label_index = np.where(labels==label)
-            feature = self.cls.get_features(images[label_index])
-            avg_feature = tf.reduce_mean(feature, axis=0) 
-            feature_avg_dic[label] = avg_feature
-        return feature_avg_dic
+            # feature = self.cls.get_features(images[label_index])
+            # avg_feature = tf.reduce_mean(feature, axis=0) 
+            # feature_avg_dic[label] = avg_feature
+            feature_list = self.cls.get_features(images[label_index])
+            for k,v in feature_list.items():
+                avg_feature = tf.reduce_mean(v, axis=0) 
+                feature_output_layer_feature_avg_dic[k][label] = avg_feature
+        # return feature_avg_dic
+        return feature_output_layer_feature_avg_dic
 
     def count_features_central_distance(self, images, labels):
         # dist = tf.linalg.norm(new_feature_avg_dic-self.pre_features_central)
         feature = self.cls.get_features(images)
         labels = np.argmax(labels, axis=1)
         accumulate_loss = 0
-        for vector,label in zip(feature,labels):  
+        for vector,label in zip(feature[self.config.features_ouput_layer[0]],labels):  
             pre_vector = self.pre_features_central[label]
             vector = tf.reshape(vector, [-1,])
             pre_vector = tf.reshape(pre_vector, [-1,])
@@ -256,15 +262,17 @@ class Trainer:
                     worksheet.cell(row=int(self.version_num)+2, column=col_num+1, value = float(col_value))
 
             if cur_epoch in self.initial_client_ouput_feat_epochs:
-                path = f"tmp/{self.client_name}/{self.version_num}{suffix}/assigned_epoch/{cur_epoch}/"
+                path = f"tmp/{self.client_name}/{self.version_num}{suffix}/assigned_epoch/{cur_epoch}"
                 os.makedirs(path)
                 self.cls.save_weights(f"{path}/cp-{cur_epoch:04d}.ckpt")
                 features_central = self.get_features_central(self.train_x,self.train_y)
                 real_features = self.generate_real_features()
-                with open(f"{path}/features_central.pkl","wb") as fp:
-                    pickle.dump(features_central, fp)
-                np.save(f"{path}/real_features",real_features)
-                np.save(f"{path}/features_label",self.train_y)
+                for k,v in real_features.items():
+                    os.makedirs(f"{path}/{k}_layer_output")
+                    with open(f"{path}/{k}_layer_output/features_central.pkl","wb") as fp:
+                        pickle.dump(features_central[k], fp)
+                    np.save(f"{path}/{k}_layer_output/real_features",v)
+                    np.save(f"{path}/{k}_layer_output/features_label",self.train_y)
 
 
             template = 'Epoch {}, Loss: {}, Accuracy: {}, Test Loss: {}, Test Accuracy: {}, Global Test Accuracy: {}'
