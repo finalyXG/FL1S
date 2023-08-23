@@ -26,9 +26,10 @@ class DataGenerator:
         # change y lable to one_hot
         self.y = tf.keras.utils.to_categorical(self.y, config.num_classes)
         self.test_y = tf.keras.utils.to_categorical(self.test_y, config.num_classes)
-
-        # self.clients = self.split_data_dirichlet()
-        self.clients = self.create_clients(config.num_clients)
+        if config.use_dirichlet_split_data:
+            self.clients = self.split_data_dirichlet()
+        else:
+            self.clients = self.create_clients(config.num_clients)
         
     def next_batch(self, batch_size):
         idx = np.random.choice(len(self.y), batch_size)
@@ -138,7 +139,7 @@ class DataGenerator:
         # Wrapping dataset subset into client train dataset
         user_data = []
         for i in range(self.config.num_clients):
-            user_data.append(np.array(dataset_train)[user_data_idxs[i]])
+            user_data.append(dataset_train[user_data_idxs[i]])
 
         for element in set(targets):
             print(element," count: ", list(targets).count(element))

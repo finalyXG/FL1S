@@ -180,6 +180,8 @@ if __name__ == '__main__':
     parser.add_argument("--initial_client_ouput_feat_epochs", type=int, nargs='+', default=[-1]) 
     parser.add_argument("--features_central_version", type=str, default="0")  #use which version as initial client( only for initial_client==0)
     parser.add_argument("--use_assigned_epoch_feature", type=int, default=0)  #use 0 means False( only for initial_client==0)
+    parser.add_argument("--use_dirichlet_split_data", type=int, default=0)  #use 0 means False( only for initial_client==0)
+
     parser.add_argument("--cls_num_epochs", type=int, default=20)
 
     parser.add_argument("--original_cls_loss_weight_list", type=float, nargs='+', default=[1.0])
@@ -211,14 +213,17 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     args.initial_client = bool(args.initial_client)
-
+    args.use_dirichlet_split_data = bool(args.use_dirichlet_split_data)
     print("client:", args.clients_name)
     print("Whether initial_client:", args.initial_client)
     print("features_central_version:", args.features_central_version)
-    print("client_train_num:", args.client_train_num)
-    print("client_test_num:", args.client_test_num)
+    if not args.use_dirichlet_split_data:
+        print("client_train_num:", args.client_train_num)
+        print("client_test_num:", args.client_test_num)
     print("cls_num_epochs:", args.cls_num_epochs)
     print("initial_client_ouput_feat_epoch:", args.initial_client_ouput_feat_epochs)
+    print("features_ouput_layer:",args.features_ouput_layer)
+    print("use_dirichlet_split_data",args.use_dirichlet_split_data)
     if args.initial_client_ouput_feat_epochs[0] <= args.cls_num_epochs:
         clients_main(args)
     else:
