@@ -18,7 +18,39 @@ import time
 import pickle
 import random
 
-def show_features_distribution(config, all_features, features_label, client1_version,version):
+def show_features_distribution(config, client_name,version_num):
+    label = np.load(f"./tmp/{client_name}/{version_num}/features_label.npy",allow_pickle=True)#[:config.test_feature_num]
+    feature = np.load(f"./tmp/{client_name}/{version_num}/real_features.npy",allow_pickle=True)#[:config.test_feature_num]
+    with open(f'tmp/clients_1/{version_num}/features_central.pkl','rb') as fp: 
+        features_central = pickle.load(fp)
+        central_label = list(features_central.keys())
+        central_features = np.array(list(features_central.values())).reshape([config.num_classes,-1])
+    ##show features distribution generate from each client
+    reshape_features = tf.concat([feature, central_features],0)  #add feature center 
+    tsne = TSNE(n_components=2, verbose=1, random_state=config.random_seed)
+    z = tsne.fit_transform(reshape_features)
+
+    df = pd.DataFrame()
+    df["comp-1"] = z[:,0]
+    df["comp-2"] = z[:,1]
+    #transfor one_hot to int
+    labels = np.argmax(label, axis=1)
+    labels = tf.concat([labels, central_label],0)   #add feature center label
+
+    df['classes'] = labels 
+    ax = sns.scatterplot(x="comp-1", y="comp-2", hue=df.classes.tolist(),
+                    palette=sns.color_palette("hls", 10),
+                    data=df)
+    
+    sns.move_legend(ax, "upper left", bbox_to_anchor=(1, 1))
+    for i,label in zip(z[-10:],central_label):
+        ax.text(i[0], i[1], label)
+    if not os.path.exists('./img/'):
+        os.makedirs('./img/')
+    plt.savefig("./img/%s.png"%version_num,bbox_inches='tight')
+    plt.close()
+
+def show_clients_features_distribution(config, all_features, features_label, client1_version,version):
     num_clients = len(version.split("_"))
     ## get coresponding clients_1 feature center
     with open(f'tmp/clients_1/{client1_version}/features_central.pkl','rb') as fp: 
