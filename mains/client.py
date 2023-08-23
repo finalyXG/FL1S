@@ -21,16 +21,16 @@ def create_feature_dataset(config, client_data):
 
     feature = np.load(f"{path}/real_features.npy",allow_pickle=True)
     labels = np.load(f"{path}/features_label.npy",allow_pickle=True)
-    # (train_data, _) = client_data
-    # client_train_data_num = len(train_data)
-    # feature_dataset = list(zip(feature, labels))
-    # print("feature length",len(feature)," label length", len(labels))
-    # #Convert the number of initial client feature to be the same as client_data
-    # feature_idx = np.random.choice(range(len(feature)), size=client_train_data_num, replace=True)
-    # feature_dataset = np.array(feature_dataset)[feature_idx]
+    (train_data, _) = client_data
+    client_train_data_num = len(train_data)
+    feature_dataset = list(zip(feature, labels))
+    print("feature length",len(feature)," label length", len(labels))
+    #Convert the number of initial client feature to be the same as client_data
+    feature_idx = np.random.choice(range(len(feature)), size=client_train_data_num, replace=True)
+    feature_dataset = np.array(feature_dataset)[feature_idx]
 
-    # feature, labels = zip(*feature_dataset)
-    # print("after feature_len",len(labels))
+    feature, labels = zip(*feature_dataset)
+    print("after feature_len",len(labels))
     feature_dataset = tf.data.Dataset.from_tensor_slices(
             (np.array(feature), np.array(labels))).shuffle(len(labels))
     return feature_dataset
