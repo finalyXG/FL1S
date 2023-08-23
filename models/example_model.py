@@ -1,6 +1,7 @@
 import tensorflow as tf
 from tensorflow.keras.layers import Dense, Flatten, Conv2D, MaxPooling2D, Multiply, LeakyReLU, Embedding, Dropout,  Reshape, BatchNormalization
 from tensorflow.keras import Model
+import numpy as np
 import time
 class BaseModel(Model):
     def __init__(self, config):
@@ -45,26 +46,59 @@ class BaseModel(Model):
             self.global_step_tensor = tf.Variable(0, trainable=False, name='global_step')
 
 
+# class Classifier(BaseModel):
+#     def __init__(self,config):
+#         super(Classifier, self).__init__(config=config)
+#         self.num_classes = config.num_classes
+#         self.cov_1 = Conv2D(32, kernel_size=(3, 3), padding='same', activation='relu', input_shape=(28,28,)  , kernel_initializer='glorot_normal')
+#         self.cov_2 = Conv2D(32, kernel_size=(3, 3), activation='relu', kernel_initializer='glorot_normal') 
+        
+    #     self.flatten = Flatten()
+    #     self.dense_1 = Dense(49, activation='relu', kernel_initializer='glorot_normal')
+    #     self.dense_2 = Dense(16, activation='relu',kernel_initializer='glorot_normal')
+    #     self.dense_3 = Dense(self.num_classes, activation='softmax', kernel_initializer='glorot_normal')
+    #     self.feature_layers = [self.cov_1, self.cov_2, self.flatten, self.dense_1,self.dense_2, self.dense_3]
+
+    # def call(self, inputs):
+    #     x = self.cov_1(inputs)
+    #     x = self.cov_2(x)
+    #     x = self.flatten(x)
+    #     x = self.dense_1(x)
+    #     x = self.dense_2(x)
+    #     return self.dense_3(x)
+    
+    # def call_2(self, x):
+    #     #x: intial clients features
+    #     for layer in self.feature_layers[self.config.features_ouput_layer:]:
+    #         x = layer(x)
+    #     return x
+    
+    # def get_features(self, x):
+    #     for layer in self.feature_layers[:self.config.features_ouput_layer]:
+    #         x = layer(x)
+    #     return x
+
+# Classifier in fed_cvae
 class Classifier(BaseModel):
     def __init__(self,config):
         super(Classifier, self).__init__(config=config)
-        self.num_classes = config.num_classes
-        self.cov_1 = Conv2D(32, kernel_size=(3, 3), padding='same', activation='relu', input_shape=(28,28,)  , kernel_initializer='glorot_normal')
-        self.cov_2 = Conv2D(32, kernel_size=(3, 3), activation='relu', kernel_initializer='glorot_normal') 
-        
+        self.cov_1 = Conv2D(32, kernel_size=(5, 5), input_shape=(28,28,))
+        self.pool_1 = MaxPooling2D((2, 2))
+        self.cov_2 = Conv2D(64, kernel_size=(5, 5))
+        self.pool_2 = MaxPooling2D((2, 2))
         self.flatten = Flatten()
-        self.dense_1 = Dense(49, activation='relu', kernel_initializer='glorot_normal')
-        self.dense_2 = Dense(16, activation='relu',kernel_initializer='glorot_normal')
-        self.dense_3 = Dense(self.num_classes, activation='softmax', kernel_initializer='glorot_normal')
-        self.feature_layers = [self.cov_1, self.cov_2, self.flatten, self.dense_1,self.dense_2, self.dense_3]
+        self.dense_1 = Dense(512, activation='relu')
+        self.dense_2 = Dense(self.config.num_classes, activation='softmax')
+        self.feature_layers = [self.cov_1, self.pool_1, self.cov_2, self.pool_2, self.flatten,self.dense_1,self.dense_2]
 
     def call(self, inputs):
         x = self.cov_1(inputs)
+        x = self.pool_1(x)
         x = self.cov_2(x)
+        x = self.pool_2(x)
         x = self.flatten(x)
         x = self.dense_1(x)
-        x = self.dense_2(x)
-        return self.dense_3(x)
+        return self.dense_2(x)
     
     def call_2(self, x):
         #for other client
