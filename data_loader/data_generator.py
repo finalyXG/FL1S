@@ -71,9 +71,7 @@ class DataGenerator:
             indices = np.random.permutation(len(dataset_train))[
                 :num_samples_keep
             ] 
-            dataset_train = np.array(dataset_train)[indices]
-
-            # dataset_train = dataset_train[:num_samples_keep]
+            dataset_train = np.array(dataset_train, dtype=object)[indices]
 
         print("len total train",len(dataset_train))
 
@@ -139,10 +137,10 @@ class DataGenerator:
         # Wrapping dataset subset into client train dataset
         user_data = []
         for i in range(self.config.num_clients):
-            user_data.append(dataset_train[user_data_idxs[i]])
+            user_data.append(np.array(dataset_train,dtype=object)[user_data_idxs[i]])
 
-        for element in set(targets):
-            print(element," count: ", list(targets).count(element))
+        # for element in set(targets):
+        #     print(element," count: ", list(targets).count(element))
 
         client_names = ['{}_{}'.format(initial, i+1) for i in range(self.config.num_clients)]
        
