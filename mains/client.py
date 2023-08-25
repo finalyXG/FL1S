@@ -24,10 +24,16 @@ def create_feature_dataset(config, client_data):
     (train_data, _) = client_data
     client_train_data_num = len(train_data)
     feature_dataset = list(zip(feature, labels))
-    print("feature length",len(feature)," label length", len(labels))
+    if config.take_feature_ratio < 1:
+        num_feature_keep = int(len(labels) * config.take_feature_ratio)
+        indices = np.random.permutation(len(feature_dataset))[
+                :num_feature_keep
+            ] 
+        feature_dataset = np.array(feature_dataset, dtype=object)[indices]
+        print("len feature_dataset",len(feature_dataset))
     #Convert the number of initial client feature to be the same as client_data
-    feature_idx = np.random.choice(range(len(feature)), size=client_train_data_num, replace=True)
-    feature_dataset = np.array(feature_dataset)[feature_idx]
+    feature_idx = np.random.choice(range(len(feature_dataset)), size=client_train_data_num, replace=True)
+    feature_dataset = np.array(feature_dataset, dtype=object)[feature_idx]
 
     feature, labels = zip(*feature_dataset)
     print("after feature_len",len(labels))
