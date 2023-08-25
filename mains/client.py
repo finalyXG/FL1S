@@ -178,16 +178,29 @@ if __name__ == '__main__':
         default=1,
     )
     parser.add_argument(
+        "--take_feature_ratio",
+        type=float,
+        help="Fraction of pre-feature data to make available to users",
+        default=1,
+    )
+    parser.add_argument(
         "--alpha",
         type=float,
         help="Measure of heterogeneity (higher is more homogeneous, lower is more heterogenous)",
         default=10,
     )
     parser.add_argument("--initial_client", type=int, default=1)  #use 0 and 1 to replace False and True 
-    parser.add_argument("--initial_client_ouput_feat_epochs", type=int, nargs='+', default=[-1]) 
+    parser.add_argument(
+        "--initial_client_ouput_feat_epochs", 
+        type=int, 
+        nargs='+', 
+        help="Define generate trained feature data in which epoch",
+        default=[-1]
+        ) 
+    parser.add_argument("--features_central_client_name", type=str, default="clients_1")  #use which version as initial client( only for initial_client==0)
     parser.add_argument("--features_central_version", type=str, default="0")  #use which version as initial client( only for initial_client==0)
-    parser.add_argument("--use_assigned_epoch_feature", type=int, default=0)  #use 0 means False( only for initial_client==0)
-    parser.add_argument("--use_dirichlet_split_data", type=int, default=0)  #use 0 means False( only for initial_client==0)
+    parser.add_argument("--use_assigned_epoch_feature", type=int, default=0)  #use 0 means False==> use feature in best local acc( only for initial_client==0)
+    parser.add_argument("--use_dirichlet_split_data", type=int, default=1)  #use 0 means False, 1 means True
 
     parser.add_argument("--cls_num_epochs", type=int, default=20)
 
@@ -195,7 +208,7 @@ if __name__ == '__main__':
     parser.add_argument("--feat_loss_weight_list", type=float, nargs='+', default=[1.0])
     parser.add_argument("--cos_loss_weight_list", type=float, nargs='+', default=[5.0]) 
     parser.add_argument("--learning_rate_list", type=float, nargs='+', default=[0.001]) 
-    parser.add_argument("--batch_size_list", type=int, nargs='+', default=[64]) 
+    parser.add_argument("--batch_size_list", type=int, nargs='+', default=[32]) 
 
     parser.add_argument("--features_ouput_layer", help="The index of features output Dense layer",type=int, nargs='+', default=[-2])
     parser.add_argument("--GAN_num_epochs", type=int, default=1)
