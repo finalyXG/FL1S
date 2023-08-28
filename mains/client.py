@@ -57,7 +57,7 @@ def clients_main(config):
         suffix = ""
         pre_features_central = None
 
-    if not os.path.exists(f"tmp/{client_name}"):
+    if not os.path.exists(f"tmp/{config.clients_name}"):
         version_num = 0
         #create new exccel to record metrics in cls best local acc
         workbook = openpyxl.Workbook() 
@@ -65,15 +65,15 @@ def clients_main(config):
         for col_num,col_index in enumerate(["version_num","original_cls_loss_weight", 'cos_loss_weight', "feat_loss_weight", "best_local_acc_epoch", 'Train_acc',"Test_local acc", "Test_global acc","Cos_loss"," ", "best_global_acc_epoch", "best_global_acc", "local_acc_in_best_global_acc_epoch"]):
             worksheet.cell(row=1, column=col_num+1, value = col_index) 
     else:
-        file_list = next(os.walk(f"./tmp/{client_name}"))[1]   #get all dir in path
+        file_list = next(os.walk(f"./tmp/{config.clients_name}"))[1]   #get all dir in path
         file_list = [int(i.split("_")[0]) for i in file_list] 
         file_list.sort()
         version_num = file_list[-1]+1  #get latest version num + 1
-        workbook = openpyxl.load_workbook(f'./tmp/{client_name}/metrics_record.xlsx')
+        workbook = openpyxl.load_workbook(f'./tmp/{config.clients_name}/metrics_record.xlsx')
         worksheet = workbook['0'] 
 
     all_test_x,all_test_y = data.test_x, data.test_y
-    client_data = data.clients[client_name]
+    client_data = data.clients[config.clients_name]
     HP_BATCH_SIZE = hp.HParam("batch_size", hp.Discrete(config.batch_size_list))
     HP_COS_LOSS_WEIGHT = hp.HParam("cos_loss_weight", hp.Discrete(config.cos_loss_weight_list))
     HP_ORIGINAL_CLS_LOSS_WEIGHT = hp.HParam("original_cls_loss_weight", hp.Discrete(config.original_cls_loss_weight_list))
@@ -98,7 +98,7 @@ def clients_main(config):
             display_name="best_local_acc",
         ),
     ]
-    with tf.summary.create_file_writer(os.path.join(config.logdir,client_name)).as_default():
+    with tf.summary.create_file_writer(os.path.join(config.logdir,config.clients_name)).as_default():
         hp.hparams_config(hparams=HPARAMS, metrics=METRICS)
 
     # create an instance of the model
@@ -122,10 +122,10 @@ def clients_main(config):
                         }
                         print({h.name: hparams[h] for h in hparams})
                         hparams = {h.name: hparams[h] for h in hparams}
-                        os.makedirs(f"tmp/{client_name}/{version_num}{suffix}")
+                        os.makedirs(f"tmp/{config.clients_name}/{version_num}{suffix}")
 
                         # record hparams and config value in this version
-                        record_hparams_file = open(f"./tmp/{client_name}/{version_num}{suffix}/hparams_record.txt", "wt")
+                        record_hparams_file = open(f"./tmp/{config.clients_name}/{version_num}{suffix}/hparams_record.txt", "wt")
                         for key,value in hparams.items():
                             record_hparams_file.write(f"{key}: {value}")
                             record_hparams_file.write("\n")
@@ -135,12 +135,12 @@ def clients_main(config):
                         record_hparams_file.close()
 
                         print('--- Starting trial: %s' % version_num)
-                        with tf.summary.create_file_writer(os.path.join(config.logdir,client_name,str(version_num))).as_default():
+                        with tf.summary.create_file_writer(os.path.join(config.logdir,config.clients_name,str(version_num))).as_default():
                             hp.hparams(hparams)  # record the values used in this trial
                             cls = Classifier(config)
                             generator = AC_Generator(config)
                             discriminator = AC_Discriminator(config)
-                            trainer = Trainer(client_name, version_num, client_data, all_test_x, all_test_y, pre_features_central, cls, discriminator, generator,config,hparams)
+                            trainer = Trainer(config.clients_name, version_num, client_data, all_test_x, all_test_y, pre_features_central, cls, discriminator, generator,config,hparams)
                             if not config.initial_client:   # get initial_client's features
                                 feature_data = create_feature_dataset(config, client_data)
                             else:
@@ -153,14 +153,14 @@ def clients_main(config):
                             tf.summary.scalar("best_global_acc", best_global_acc, step=1)
                             tf.summary.scalar("best_local_acc", best_local_acc, step=1)
                             for k,v in real_features.items():
-                                os.makedirs(f"tmp/{client_name}/{version_num}{suffix}/{k}_layer_output")
-                                with open(f"tmp/{client_name}/{version_num}{suffix}/{k}_layer_output/features_central.pkl","wb") as fp:
+                                os.makedirs(f"tmp/{config.clients_name}/{version_num}{suffix}/{k}_layer_output")
+                                with open(f"tmp/{config.clients_name}/{version_num}{suffix}/{k}_layer_output/features_central.pkl","wb") as fp:
                                         pickle.dump(cur_features_central[k], fp)
-                                np.save(f"tmp/{client_name}/{version_num}{suffix}/{k}_layer_output/real_features",v)
-                                np.save(f"tmp/{client_name}/{version_num}{suffix}/{k}_layer_output/features_label",features_label)
+                                np.save(f"tmp/{config.clients_name}/{version_num}{suffix}/{k}_layer_output/real_features",v)
+                                np.save(f"tmp/{config.clients_name}/{version_num}{suffix}/{k}_layer_output/features_label",features_label)
                         version_num += 1
                 
-    workbook.save(f'./tmp/{client_name}/metrics_record.xlsx')
+    workbook.save(f'./tmp/{config.clients_name}/metrics_record.xlsx')
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
