@@ -82,13 +82,43 @@ class BaseModel(Model):
 class Classifier(BaseModel):
     def __init__(self,config):
         super(Classifier, self).__init__(config=config)
-        self.cov_1 = Conv2D(32, kernel_size=(5, 5), input_shape=(28,28,))
-        self.pool_1 = MaxPooling2D((2, 2))
-        self.cov_2 = Conv2D(64, kernel_size=(5, 5))
-        self.pool_2 = MaxPooling2D((2, 2))
-        self.flatten = Flatten()
-        self.dense_1 = Dense(512, activation='relu')
-        self.dense_2 = Dense(self.config.num_classes, activation='softmax')
+        if config.use_same_kernel_initializer:
+            print("use_same_kernel_initializer")
+            self.cov_1 = Conv2D(32, kernel_size=(5, 5), input_shape=(28,28,))
+            self.pool_1 = MaxPooling2D((2, 2))
+            self.cov_2 = Conv2D(64, kernel_size=(5, 5))
+            self.pool_2 = MaxPooling2D((2, 2))
+            self.flatten = Flatten()
+            self.dense_1 = Dense(512, activation='relu')
+            self.dense_2 = Dense(self.config.num_classes, activation='softmax')  
+        else:
+            if config.clients_name == "clients_1":
+                print("for clients_1 use default initial model")
+                self.cov_1 = Conv2D(32, kernel_size=(5, 5), input_shape=(28,28,))
+                self.pool_1 = MaxPooling2D((2, 2))
+                self.cov_2 = Conv2D(64, kernel_size=(5, 5))
+                self.pool_2 = MaxPooling2D((2, 2))
+                self.flatten = Flatten()
+                self.dense_1 = Dense(512, activation='relu')
+                self.dense_2 = Dense(self.config.num_classes, activation='softmax')
+            elif config.clients_name == "clients_2":
+                print("for clients_2 use glorot_normal")
+                self.cov_1 = Conv2D(32, kernel_size=(5, 5), input_shape=(28,28,), kernel_initializer='glorot_normal')
+                self.pool_1 = MaxPooling2D((2, 2))
+                self.cov_2 = Conv2D(64, kernel_size=(5, 5), kernel_initializer='glorot_normal')
+                self.pool_2 = MaxPooling2D((2, 2))
+                self.flatten = Flatten()
+                self.dense_1 = Dense(512, activation='relu', kernel_initializer='glorot_normal')
+                self.dense_2 = Dense(self.config.num_classes, activation='softmax', kernel_initializer='glorot_normal')
+            else:
+                print("for other client use random_normal")
+                self.cov_1 = Conv2D(32, kernel_size=(5, 5), input_shape=(28,28,), kernel_initializer='random_normal')
+                self.pool_1 = MaxPooling2D((2, 2))
+                self.cov_2 = Conv2D(64, kernel_size=(5, 5), kernel_initializer='random_normal')
+                self.pool_2 = MaxPooling2D((2, 2))
+                self.flatten = Flatten()
+                self.dense_1 = Dense(512, activation='relu', kernel_initializer='random_normal')
+                self.dense_2 = Dense(self.config.num_classes, activation='softmax', kernel_initializer='random_normal')
         self.feature_layers = [self.cov_1, self.pool_1, self.cov_2, self.pool_2, self.flatten,self.dense_1,self.dense_2]
 
     def call(self, inputs):

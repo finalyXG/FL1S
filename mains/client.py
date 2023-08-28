@@ -201,6 +201,7 @@ if __name__ == '__main__':
     parser.add_argument("--features_central_version", type=str, default="0")  #use which version as initial client( only for initial_client==0)
     parser.add_argument("--use_assigned_epoch_feature", type=int, default=0)  #use 0 means False==> use feature in best local acc( only for initial_client==0)
     parser.add_argument("--use_dirichlet_split_data", type=int, default=1)  #use 0 means False, 1 means True
+    parser.add_argument("--use_same_kernel_initializer", type=int, default=1)
 
     parser.add_argument("--cls_num_epochs", type=int, default=20)
 
