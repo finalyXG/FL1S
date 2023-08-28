@@ -19,9 +19,9 @@ import pickle
 import random
 
 def show_features_distribution(config, client_name,version_num):
-    label = np.load(f"./tmp/{client_name}/{version_num}/features_label.npy",allow_pickle=True)#[:config.test_feature_num]
-    feature = np.load(f"./tmp/{client_name}/{version_num}/real_features.npy",allow_pickle=True)#[:config.test_feature_num]
-    with open(f'tmp/clients_1/{version_num}/features_central.pkl','rb') as fp: 
+    label = np.load(f"./tmp/{client_name}/{version_num}/assigned_epoch/80/-2_layer_output/features_label.npy",allow_pickle=True)#[:config.test_feature_num]
+    feature = np.load(f"./tmp/{client_name}/{version_num}/assigned_epoch/80/-2_layer_output/real_features.npy",allow_pickle=True)#[:config.test_feature_num]
+    with open(f'tmp/{client_name}/{version_num}/assigned_epoch/80/-2_layer_output/features_central.pkl','rb') as fp: 
         features_central = pickle.load(fp)
         central_label = list(features_central.keys())
         central_features = np.array(list(features_central.values())).reshape([config.num_classes,-1])
@@ -47,7 +47,7 @@ def show_features_distribution(config, client_name,version_num):
         ax.text(i[0], i[1], label)
     if not os.path.exists('./img/'):
         os.makedirs('./img/')
-    plt.savefig("./img/%s.png"%version_num,bbox_inches='tight')
+    plt.savefig(f"./img/{client_name}_{version_num}.png",bbox_inches='tight')
     plt.close()
 
 def show_clients_features_distribution(config, all_features, features_label,num_clients, clients_length, client1_version,version):
@@ -116,8 +116,8 @@ def use_npy_generate_feature(config):
                         combine_feature[f"{client1_version}_{client_name}"][cur_combine_version] = combine_features
                     else:
                         combine_feature[f"{client1_version}_{client_name}"] = {cur_combine_version: combine_features}
-                    show_features_distribution(config, combine_features, labels, client1_version, "npy"+cur_combine_version)
-            
+                    show_clients_features_distribution(config, combine_features, labels, client1_version, "npy"+cur_combine_version)
+
             else: #client_name == "clients_1":
                 combine_feature[f"{version_num}_{client_name}"] = {version_num: feature}
 
@@ -160,7 +160,7 @@ def main(config):
                         combine_feature[f"{client1_version}_{client_name}"][cur_combine_version] = combine_features
                     else:
                         combine_feature[f"{client1_version}_{client_name}"] = {cur_combine_version: combine_features}
-                    show_features_distribution(config, combine_features, labels, client1_version, cur_combine_version)
+                    show_clients_features_distribution(config, combine_features, labels, client1_version, cur_combine_version)
             
             else: #client_name == "clients_1":
                 combine_feature[f"{version_num}_{client_name}"] = {version_num: feature}
