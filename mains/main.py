@@ -168,6 +168,7 @@ def main(config):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     # General command line arguments for all models
+    parser.add_argument("--auto_generate", type=int, default=0)
     parser.add_argument("--test_feature_num", type=int, default=500)
     parser.add_argument("--client_train_num", type=int, default=2000)
     parser.add_argument("--client_test_num", type=int, default=2000)
@@ -207,5 +208,26 @@ if __name__ == '__main__':
 
     print("num_clients:", args.num_clients)
     print("test_feature_num:", args.test_feature_num)
-    main(args)   #use model generate feature
-    # use_npy_generate_feature(args)
+    if args.auto_generate:
+        for client_name in args.clients_name_list:
+            for client_version in args.clients_version_list:
+                print(client_name)
+                show_features_distribution(args, client_name,client_version)
+        main(args)   #use model generate feature
+        # use_npy_generate_feature(args)
+    else:
+        ### appoint path to get feature
+        client_num = int(input("input clients number:"))
+        img_name = input("img path:")
+        clients_1_path = input("input clients_1 feature path: ")
+        features = np.load(f"{clients_1_path}/real_features.npy",allow_pickle=True)
+        labels = np.load(f"{clients_1_path}/features_label.npy",allow_pickle=True)
+        clients_length = [len(labels)]
+        for num in range(client_num-1):
+            tmp_path = input(f"input clients_{num+2} feature path: ")
+            tmp_feature = np.load(f"{tmp_path}/real_features.npy",allow_pickle=True)
+            tmp_label = np.load(f"{tmp_path}/features_label.npy",allow_pickle=True)
+            clients_length.append(len(tmp_label))
+            features = tf.concat([features,tmp_feature],0)
+            labels = tf.concat([labels,tmp_label],0)
+        show_clients_features_distribution(args, features, labels, client_num, clients_length,"0", img_name)
