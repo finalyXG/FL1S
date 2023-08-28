@@ -10,17 +10,29 @@ import pickle
 import random
 import openpyxl
 
+def concatenate_feature_labels(config, tail_path):
+    for index, (client_name, client_version) in enumerate(zip(config.features_central_client_name_list, config.features_central_version_list)):
+        path = f"./tmp/{client_name}/{client_version}/{tail_path}"
+        if index:
+            tmp_feature = np.load(f"{path}/real_features.npy",allow_pickle=True)
+            tmp_labels = np.load(f"{path}/features_label.npy",allow_pickle=True)
+            feature = np.concatenate((feature, tmp_feature),axis=0)
+            labels = np.concatenate((labels, tmp_labels),axis=0)
+        else:
+            feature = np.load(f"{path}/real_features.npy",allow_pickle=True)
+            labels = np.load(f"{path}/features_label.npy",allow_pickle=True)
+    return feature, labels
+
 def create_feature_dataset(config, client_data):
     '''
     generate initial client feature to dataset
     '''
     if config.use_assigned_epoch_feature:
-        path = f"./tmp/{config.features_central_client_name}/{config.features_central_version}/assigned_epoch/{config.use_assigned_epoch_feature}/{config.features_ouput_layer[0]}_layer_output/"
+        tail_path = f"assigned_epoch/{config.use_assigned_epoch_feature}/{config.features_ouput_layer[0]}_layer_output/"
     else:
-        path = f"./tmp/{config.features_central_client_name}/{config.features_central_version}/{config.features_ouput_layer[0]}_layer_output/"
+        tail_path = f"{config.features_ouput_layer[0]}_layer_output/"
+    feature, labels = concatenate_feature_labels(config, tail_path)
 
-    feature = np.load(f"{path}/real_features.npy",allow_pickle=True)
-    labels = np.load(f"{path}/features_label.npy",allow_pickle=True)
     (train_data, _) = client_data
     client_train_data_num = len(train_data)
     feature_dataset = list(zip(feature, labels))
@@ -42,20 +54,24 @@ def create_feature_dataset(config, client_data):
     return feature_dataset
 
 def clients_main(config):
-    client_name = config.clients_name
     data = DataGenerator(config)
+    suffix = ""
+    pre_features_central = None
     if not config.initial_client:  
-        suffix = f"_with_{config.features_central_version}" #indicate clients_1 version features center
-        if config.use_assigned_epoch_feature:
-            path = f'tmp/{config.features_central_client_name}/{config.features_central_version}/assigned_epoch/{config.use_assigned_epoch_feature}/{config.features_ouput_layer[0]}_layer_output/'
-        else:
-            path = f'tmp/{config.features_central_client_name}/{config.features_central_version}/{config.features_ouput_layer[0]}_layer_output/'
-
-        with open(f'{path}/features_central.pkl','rb') as fp: 
-            pre_features_central = pickle.load(fp) #load features_central pre-saved
-    else:
-        suffix = ""
-        pre_features_central = None
+        for client_name, client_version in zip(config.features_central_client_name_list, config.features_central_version_list):
+            suffix += f"_{client_name}_{client_version}" #indicate clients_name version features center
+            if config.use_assigned_epoch_feature:
+                path = f'tmp/{client_name}/{client_version}/assigned_epoch/{config.use_assigned_epoch_feature}/{config.features_ouput_layer[0]}_layer_output/'
+            else:
+                path = f'tmp/{client_name}/{client_version}/{config.features_ouput_layer[0]}_layer_output/'
+            with open(f'{path}/features_central.pkl','rb') as fp: 
+                features_central = pickle.load(fp) #load features_central pre-saved
+            if pre_features_central:
+                for k,v in pre_features_central.items():
+                    pre_features_central[k] = tf.stack([pre_features_central[k],features_central[k]])
+                    pre_features_central[k] = tf.reduce_mean(pre_features_central[k], axis=0) 
+            else:
+                pre_features_central = features_central
 
     if not os.path.exists(f"tmp/{config.clients_name}"):
         version_num = 0
@@ -197,8 +213,8 @@ if __name__ == '__main__':
         help="Define generate trained feature data in which epoch",
         default=[-1]
         ) 
-    parser.add_argument("--features_central_client_name", type=str, default="clients_1")  #use which version as initial client( only for initial_client==0)
-    parser.add_argument("--features_central_version", type=str, default="0")  #use which version as initial client( only for initial_client==0)
+    parser.add_argument("--features_central_client_name_list", type=str, nargs='+', default=["clients_1"])  #use which version as initial client( only for initial_client==0)
+    parser.add_argument("--features_central_version_list", type=str,nargs='+',  default=["0"])  #use which version as initial client( only for initial_client==0)
     parser.add_argument("--use_assigned_epoch_feature", type=int, default=0)  #use 0 means False==> use feature in best local acc( only for initial_client==0)
     parser.add_argument("--use_dirichlet_split_data", type=int, default=1)  #use 0 means False, 1 means True
     parser.add_argument("--use_same_kernel_initializer", type=int, default=1)
@@ -237,7 +253,7 @@ if __name__ == '__main__':
     args.use_dirichlet_split_data = bool(args.use_dirichlet_split_data)
     print("client:", args.clients_name)
     print("Whether initial_client:", args.initial_client)
-    print("features_central_version:", args.features_central_version)
+    print("features_central_version_list:", args.features_central_version_list)
     if not args.use_dirichlet_split_data:
         print("client_train_num:", args.client_train_num)
         print("client_test_num:", args.client_test_num)
