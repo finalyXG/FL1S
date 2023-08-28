@@ -171,16 +171,31 @@ if __name__ == '__main__':
     parser.add_argument("--test_feature_num", type=int, default=500)
     parser.add_argument("--client_train_num", type=int, default=2000)
     parser.add_argument("--client_test_num", type=int, default=2000)
-    parser.add_argument("--features_ouput_layer", help="The index of features output Dense layer",type=int, default=2)
+    parser.add_argument("--clients_name_list", type=str, nargs='+', default=['clients_1'])
+    parser.add_argument("--clients_version_list", type=str, nargs='+', default=['0'])
+    parser.add_argument("--use_dirichlet_split_data", type=int, default=1)  #use 0 means False, 1 means True
+
+    parser.add_argument(
+        "--sample_ratio",
+        type=float,
+        help="Fraction of training data to make available to users",
+        default=1,
+    )
+    parser.add_argument(
+        "--alpha",
+        type=float,
+        help="Measure of heterogeneity (higher is more homogeneous, lower is more heterogenous)",
+        default=None,
+    )
+    parser.add_argument("--features_ouput_layer", help="The index of features output Dense layer",type=int, default=-2)
     parser.add_argument("--image_size", type=int, default=28)
-    parser.add_argument("--buffer_size", type=int, default=5000)
     parser.add_argument("--latent_dim", type=int, default=16)
-    # parser.add_argument("--feature_dim", type=int, default=16)
     parser.add_argument("--max_to_keep", type=int, default=5)
     parser.add_argument("--num_classes", type=int, default=10)
 
     parser.add_argument("--num_clients", type=int, default=2)
     parser.add_argument("--random_seed", type=int, default=10)
+    parser.add_argument("--data_random_seed", type=int, default=1693)
 
     parser.add_argument("--exp_name", type=str, default="example")
     parser.add_argument("--logdir", type=str, default="logs/hparam_tuning")
