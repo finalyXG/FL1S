@@ -182,6 +182,11 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     # General command line arguments for all models
     parser.add_argument(
+        "--dataset",
+        type=str,
+        default="mnist"
+    )
+    parser.add_argument(
         "--clients_name",
         type=str,
         help="Name of client",
@@ -231,13 +236,11 @@ if __name__ == '__main__':
     parser.add_argument("--GAN_num_epochs", type=int, default=1)
     parser.add_argument("--test_feature_num", type=int, default=500)
     parser.add_argument("--test_sample_num", help="The number of real features and fake features in tsne img", type=int, default=500) 
-    parser.add_argument("--image_size", type=int, default=28)
     parser.add_argument("--gp_weight", type=int, default=10.0)
     parser.add_argument("--discriminator_extra_steps", type=int, default=3)
     parser.add_argument("--num_examples_to_generate", type=int, default=16)
     parser.add_argument("--latent_dim", type=int, default=16)
     parser.add_argument("--max_to_keep", type=int, default=5)
-    parser.add_argument("--num_classes", type=int, default=10)
 
     parser.add_argument("--num_clients", type=int, default=2)
     parser.add_argument("--client_train_num", type=int, default=1000)

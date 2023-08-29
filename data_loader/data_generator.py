@@ -6,6 +6,7 @@ import time
 import seaborn as sns
 from PIL import Image
 import pandas as pd
+import scipy.io
 import os
 class DataGenerator:
     def __init__(self, config):
@@ -13,16 +14,49 @@ class DataGenerator:
         tf.random.set_seed(config.data_random_seed)
         np.random.seed(config.data_random_seed)
         random.seed(config.data_random_seed)
-        mnist = tf.keras.datasets.mnist
+        if config.dataset == "mnist":
+            mnist = tf.keras.datasets.mnist
+            config.num_channels = 1
+            config.num_classes = 10
+            config.image_size = 28
 
-        (self.input, self.y), (self.test_x, self.test_y) = mnist.load_data()
-        self.input = self.input.reshape(self.input.shape[0], 28, 28, 1).astype('float32')
-        # self.input = (self.input - 127.5) / 127.5  # Normalize the images to [-1, 1]
-        self.input = self.input  / 255  # Normalize the images to [0, 1]
+            (self.input, self.y), (self.test_x, self.test_y) = mnist.load_data()
+            self.input = self.input.reshape(self.input.shape[0], 28, 28, config.num_channels).astype('float32')
+            self.test_x = self.test_x.reshape(self.test_x.shape[0], 28, 28, config.num_channels).astype('float32')
 
-        self.test_x = self.test_x.reshape(self.test_x.shape[0], 28, 28, 1).astype('float32')
-        # self.test_x = (self.test_x - 127.5) / 127.5  # Normalize the images to [-1, 1]
-        self.test_x = self.test_x / 255 
+        elif config.dataset == "fashion":
+            fashion_mnist = tf.keras.datasets.fashion_mnist
+            config.num_channels = 1
+            config.num_classes = 10
+            config.image_size = 28
+
+            (self.input, self.y), (self.test_x, self.test_y) = fashion_mnist.load_data()
+            self.input = self.input.reshape(self.input.shape[0], 28, 28, config.num_channels).astype('float32')
+            self.test_x = self.test_x.reshape(self.test_x.shape[0], 28, 28, config.num_channels).astype('float32')
+        elif config.dataset == "svhn":
+            config.num_channels = 3
+            config.num_classes = 10
+            config.image_size = 32
+            trainData = scipy.io.loadmat('./data_loader/svhn/train_32x32.mat')#load data
+            self.input, self.y = trainData["X"], trainData["y"]
+
+            testData = scipy.io.loadmat('./data_loader/svhn/test_32x32.mat')#load test data
+            self.test_x, self.test_y = testData["X"], testData["y"]
+
+            self.input = np.moveaxis(self.input, -1, 0).astype('float32')
+            self.test_x = np.moveaxis(self.test_x, -1, 0).astype('float32')
+
+            self.y = self.y.squeeze()
+            self.test_y = self.test_y.squeeze()
+            self.y[np.where(self.y == 10)] = 0
+            self.test_y[np.where(self.test_y == 10)] = 0
+        else:
+            raise NotImplementedError(
+                f"Dataset '{config.data_random_seed}' has not been implemented, please choose either mnist, svhn or fashion"
+            )
+        
+        self.input = self.input  / 255 # Normalize the images to [0, 1]
+        self.test_x = self.test_x  / 255
         # change y lable to one_hot
         self.y = tf.keras.utils.to_categorical(self.y, config.num_classes)
         self.test_y = tf.keras.utils.to_categorical(self.test_y, config.num_classes)

@@ -84,7 +84,7 @@ class Classifier(BaseModel):
         super(Classifier, self).__init__(config=config)
         if config.use_same_kernel_initializer:
             print("use_same_kernel_initializer")
-            self.cov_1 = Conv2D(32, kernel_size=(5, 5), input_shape=(28,28,))
+            self.cov_1 = Conv2D(32, kernel_size=(5, 5), input_shape=(config.image_size,config.image_size,))
             self.pool_1 = MaxPooling2D((2, 2))
             self.cov_2 = Conv2D(64, kernel_size=(5, 5))
             self.pool_2 = MaxPooling2D((2, 2))
