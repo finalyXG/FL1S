@@ -33,7 +33,7 @@ def create_feature_dataset(config, client_data):
         tail_path = f"{config.features_ouput_layer[0]}_layer_output/"
     feature, labels = concatenate_feature_labels(config, tail_path)
 
-    (train_data, _) = client_data
+    (train_data, test_data) = client_data
     client_train_data_num = len(train_data)
     feature_dataset = list(zip(feature, labels))
     if config.take_feature_ratio < 1:
@@ -42,16 +42,20 @@ def create_feature_dataset(config, client_data):
                 :num_feature_keep
             ] 
         feature_dataset = np.array(feature_dataset, dtype=object)[indices]
-        print("len feature_dataset",len(feature_dataset))
     #Convert the number of initial client feature to be the same as client_data
-    feature_idx = np.random.choice(range(len(feature_dataset)), size=client_train_data_num, replace=True)
-    feature_dataset = np.array(feature_dataset, dtype=object)[feature_idx]
-
+    if config.feature_match_train_data:
+        feature_idx = np.random.choice(range(len(feature_dataset)), size=client_train_data_num, replace=True)
+        feature_dataset = np.array(feature_dataset, dtype=object)[feature_idx]
+    else:
+        train_data_idx = np.random.choice(range(len(train_data)), size=len(feature_dataset), replace=True)
+        train_data = np.array(train_data, dtype=object)[train_data_idx]
+    client_data = (train_data, test_data)
     feature, labels = zip(*feature_dataset)
     print("after feature_len",len(labels))
+    print("after train_data",len(labels))
     feature_dataset = tf.data.Dataset.from_tensor_slices(
             (np.array(feature), np.array(labels))).shuffle(len(labels))
-    return feature_dataset
+    return feature_dataset, client_data
 
 def clients_main(config):
     data = DataGenerator(config)
@@ -153,14 +157,15 @@ def clients_main(config):
                         print('--- Starting trial: %s' % version_num)
                         with tf.summary.create_file_writer(os.path.join(config.logdir,config.clients_name,str(version_num))).as_default():
                             hp.hparams(hparams)  # record the values used in this trial
+                            if not config.initial_client:   # get initial_client's features
+                                feature_data, client_data = create_feature_dataset(config, client_data)
+                            else:
+                                feature_data = None
                             cls = Classifier(config)
                             generator = AC_Generator(config)
                             discriminator = AC_Discriminator(config)
+
                             trainer = Trainer(config.clients_name, version_num, client_data, all_test_x, all_test_y, pre_features_central, cls, discriminator, generator,config,hparams)
-                            if not config.initial_client:   # get initial_client's features
-                                feature_data = create_feature_dataset(config, client_data)
-                            else:
-                                feature_data = None
                             cur_features_central, real_features, best_global_acc, best_local_acc = trainer.train_cls(worksheet,feature_data, suffix)
                             features_label = trainer.get_features_label()
                             ### GAN
@@ -223,6 +228,7 @@ if __name__ == '__main__':
     parser.add_argument("--use_assigned_epoch_feature", type=int, default=0)  #use 0 means False==> use feature in best local acc( only for initial_client==0)
     parser.add_argument("--use_dirichlet_split_data", type=int, default=1)  #use 0 means False, 1 means True
     parser.add_argument("--use_same_kernel_initializer", type=int, default=1)
+    parser.add_argument("--feature_match_train_data", type=int, default=1)  #1 means set the length of feature to be the same as the length of train data, 0 reverse
 
     parser.add_argument("--cls_num_epochs", type=int, default=20)
 
