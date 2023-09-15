@@ -36,9 +36,8 @@ class Trainer:
         self.train_x,self.train_y = np.array(self.train_x),np.array(self.train_y)
         self.test_x,self.test_y = np.array(self.test_x),np.array(self.test_y)
         ## show the distribution of label
-        # tmp = np.argmax(self.train_y,axis=1)
-        # for element in set(tmp):
-        #     print(element," count: ", list(tmp).count(element))
+        # for element in set(self.train_y):
+        #     print(element," count: ", list(self.train_y).count(element))
 
         self.train_data = tf.data.Dataset.from_tensor_slices(
         (self.train_x,self.train_y)).shuffle(len(self.train_y))
@@ -49,6 +48,9 @@ class Trainer:
         
         self.local_cls_acc_list = []  
         self.global_cls_acc_list = []
+        self.global_cls_f1_list = []
+        self.global_cls_recall_list = []
+        self.global_cls_precision_list = []
         self.GAN_version = "ACGAN" #hparams['gan_version']
         self.batch_size = hparams['batch_size']
         self.learning_rate = hparams['learning_rate']
@@ -57,7 +59,6 @@ class Trainer:
         self.original_cls_loss_weight = hparams['original_cls_loss_weight']
         self.feat_loss_weight = hparams['feat_loss_weight']
 
-        self.image_size = config.image_size
         self.gp_weight = config.gp_weight
         self.num_classes = config.num_classes
         self.discriminator_extra_steps = config.discriminator_extra_steps
@@ -69,10 +70,7 @@ class Trainer:
         self.gen_optimizer = tf.keras.optimizers.legacy.Adam(self.learning_rate)
         
         self.loss_fn_gan_binary = tf.keras.losses.BinaryCrossentropy(from_logits=True)
-        self.loss_fn_gan_categorical = tf.keras.losses.CategoricalCrossentropy(from_logits=True) #int
-        self.img_loss_fn_cls = tf.keras.losses.CategoricalCrossentropy(from_logits=False)
-        self.feature_loss_fn_cls = tf.keras.losses.CategoricalCrossentropy(from_logits=False)
-        
+        self.loss_fn_gan_categorical = tf.keras.losses.CategoricalCrossentropy(from_logits=True) # output not normalized
         self.disc_test_binary_accuracy = tf.keras.metrics.BinaryAccuracy(name='disc_test_binary_accuracy')
         self.disc_test_categorical_accuracy = tf.keras.metrics.CategoricalAccuracy(name='disc_test_categorical_accuracy')
         self.disc_train_binary_accuracy = tf.keras.metrics.BinaryAccuracy(name='disc_train_binary_accuracy')
@@ -82,11 +80,32 @@ class Trainer:
         self.cls_train_distance_loss = tf.keras.metrics.Mean(name='cls_train_distance_loss')
         self.cls_train_classify_loss = tf.keras.metrics.Mean(name='cls_train_classify_loss')
         self.cls_train_feature_loss = tf.keras.metrics.Mean(name='cls_train_feature_loss')
-
-        self.cls_train_accuracy = tf.keras.metrics.CategoricalAccuracy(name='cls_train_accuracy')
         self.cls_test_loss = tf.keras.metrics.Mean(name='cls_test_loss')
-        self.cls_test_accuracy = tf.keras.metrics.CategoricalAccuracy(name='cls_test_accuracy')
-        self.global_cls_test_accuracy = tf.keras.metrics.CategoricalAccuracy(name='global_cls_test_accuracy')
+    
+        if config.dataset != "elliptic":
+            self.img_loss_fn_cls = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=False)
+            self.feature_loss_fn_cls = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=False)
+            self.cls_train_accuracy = tf.keras.metrics.SparseCategoricalAccuracy(name='cls_train_accuracy')
+            self.cls_test_accuracy = tf.keras.metrics.SparseCategoricalAccuracy(name='cls_test_accuracy')
+            self.cls_global_test_accuracy = tf.keras.metrics.SparseCategoricalAccuracy(name='cls_global_test_accuracy')
+        else:
+            # class_weights = {0: 0.3, 1: 0.7}
+            # self.img_loss_fn_cls = tf.keras.losses.CategoricalCrossentropy(weight=class_weights)
+            # self.feature_loss_fn_cls = tf.keras.losses.CategoricalCrossentropy(weight=class_weights)
+            self.weights = tf.constant(0.7/0.3)
+            # self.img_loss_fn_cls = tf.keras.losses.BinaryCrossentropy()
+            # self.feature_loss_fn_cls = tf.keras.losses.BinaryCrossentropy()
+            self.cls_train_accuracy = tf.keras.metrics.BinaryAccuracy(name='cls_train_accuracy')
+            self.cls_test_accuracy = tf.keras.metrics.BinaryAccuracy(name='cls_test_accuracy')
+            self.cls_global_test_accuracy = tf.keras.metrics.BinaryAccuracy(name='cls_global_test_accuracy')
+
+        self.cls_test_elliptic_recall = tf.keras.metrics.Recall(name='elliptic_test_recall')
+        self.cls_test_elliptic_precision = tf.keras.metrics.Precision(name='elliptic_test_precision')
+        self.cls_test_elliptic_f1 = tf.keras.metrics.F1Score(threshold=0.5, name='elliptic_test_f1score')
+
+        self.cls_global_test_elliptic_recall = tf.keras.metrics.Recall(name='elliptic_global_test_recall')
+        self.cls_global_test_elliptic_precision = tf.keras.metrics.Precision(name='elliptic_global_test_precision')
+        self.cls_global_test_elliptic_f1 = tf.keras.metrics.F1Score(threshold=0.5,name='elliptic_global_test_f1score')  
 
         self.disc_train_loss = tf.keras.metrics.Mean(name='disc_train_loss')
         self.gen_train_loss = tf.keras.metrics.Mean(name='gen_train_loss')  
@@ -119,13 +138,22 @@ class Trainer:
     def train_cls_step(self,images, labels, features=None, features_label=None):
         with tf.GradientTape() as tape:
             predictions = self.cls(images, training=True)
-            loss = self.img_loss_fn_cls(labels, predictions) * self.original_cls_loss_weight
+            y_true = tf.expand_dims(labels, axis=1)
+            if self.config.dataset != "elliptic":
+                loss = self.img_loss_fn_cls(labels, predictions) * self.original_cls_loss_weight
+            else:
+                loss = tf.nn.weighted_cross_entropy_with_logits(labels=y_true, logits=predictions, pos_weight=self.weights) * self.original_cls_loss_weight
             self.cls_train_classify_loss(loss)
             distance_loss = 0.0
             feature_loss = 0.0
             if self.pre_features_central is not None:
                 distance_loss = self.count_features_central_distance(self.pre_features_central, images, labels)
                 feature_predictions = self.cls.call_2(features)
+                if self.config.dataset != "elliptic":
+                    feature_loss = self.feature_loss_fn_cls(features_label, feature_predictions)
+                else:
+                    feature_true = tf.expand_dims(features_label, axis=1)
+                    feature_loss = tf.nn.weighted_cross_entropy_with_logits(labels=feature_true, logits=feature_predictions, pos_weight=self.weights)
             elif self.initial_feature_center is not None:
                 distance_loss = self.count_features_central_distance(self.initial_feature_center, images, labels)
             loss += (distance_loss*self.cos_loss_weight)
@@ -137,13 +165,25 @@ class Trainer:
     @tf.function
     def local_test_cls_step(self,images, labels):
         predictions = self.cls(images, training=False)
-        loss = self.img_loss_fn_cls(labels, predictions)
+        if self.config.dataset == "elliptic":
+            y_true = tf.expand_dims(labels, axis=1)
+            loss = tf.nn.weighted_cross_entropy_with_logits(labels=y_true, logits=predictions, pos_weight=self.weights) * self.original_cls_loss_weight
+            self.cls_test_elliptic_f1(y_true, predictions)
+            self.cls_test_elliptic_precision(y_true, predictions)
+            self.cls_test_elliptic_recall(y_true, predictions)
+        else:
+            loss = self.img_loss_fn_cls(labels, predictions)
         return self.cls_test_loss(loss), self.cls_test_accuracy(labels, predictions)
     
     @tf.function
     def global_test_cls_step(self,images, labels):
         predictions = self.cls(images, training=False)
-        return self.global_cls_test_accuracy(labels, predictions)
+        if self.config.dataset == "elliptic":
+            y_true = tf.expand_dims(labels, axis=1)
+            self.cls_global_test_elliptic_f1(y_true, predictions)
+            self.cls_global_test_elliptic_precision(y_true, predictions)
+            self.cls_global_test_elliptic_recall(y_true, predictions)
+        return self.cls_global_test_accuracy(labels, predictions)
     
     def get_features_central(self, images, labels):  
         #using client train dataset to generate features central
@@ -175,6 +215,8 @@ class Trainer:
             os.makedirs(checkpoint_dir+'global')
             os.makedirs(checkpoint_dir+'local_checkpoint')   #store checkpoint
             os.makedirs(checkpoint_dir+'global_checkpoint')
+            if self.config.dataset == "elliptic":
+                os.makedirs(checkpoint_dir+'global_f1')
         checkpoint_local_prefix = os.path.join(checkpoint_dir+'local_checkpoint', "ckpt")
         checkpoint_global_prefix = os.path.join(checkpoint_dir+'global_checkpoint', "ckpt")
         checkpoint = tf.train.Checkpoint( optimizer=self.cls_optimizer,
@@ -272,7 +314,17 @@ class Trainer:
                                     self.cls_train_accuracy.result()*100,
                                     self.cls_test_loss.result(), 
                                     self.cls_test_accuracy.result()*100,
-                                    self.global_cls_test_accuracy.result()*100))
+            if self.config.dataset == "elliptic":
+                self.global_cls_f1_list.append(self.cls_global_test_elliptic_f1.result())
+                self.global_cls_recall_list.append(self.cls_global_test_elliptic_recall.result())
+                self.global_cls_precision_list.append(self.cls_global_test_elliptic_precision.result())
+                template = 'Global Test Recall: {}, Global Test Precision: {}, Global Test F1: {}'
+                print (template.format(#self.cls_test_elliptic_recall.result()*100,   #Test Recall: {}, Test Precision: {}, Test F1: {}, 
+                                    #self.cls_test_elliptic_precision.result()*100,
+                                    #self.cls_test_elliptic_f1.result()*100,
+                                    self.cls_global_test_elliptic_recall.result()*100,
+                                    self.cls_global_test_elliptic_precision.result()*100,
+                                    self.cls_global_test_elliptic_f1.result()*100,))
 
             # Reset metrics every epoch
             self.cls_train_loss.reset_states()
@@ -283,6 +335,13 @@ class Trainer:
             self.cls_train_distance_loss.reset_states()
             self.cls_train_feature_loss.reset_states()
             self.cls_train_classify_loss.reset_states()
+            self.cls_test_elliptic_recall.reset_states()
+            self.cls_test_elliptic_f1.reset_states()
+            self.cls_test_elliptic_precision.reset_states()
+            self.cls_global_test_elliptic_f1.reset_states()
+            self.cls_global_test_elliptic_precision.reset_states()
+            self.cls_global_test_elliptic_recall.reset_states()
+
         best_global_acc = max(self.global_cls_acc_list)
         best_local_acc = max(self.local_cls_acc_list)
         max_local_acc_index = self.local_cls_acc_list.index(best_local_acc)
@@ -319,6 +378,12 @@ class Trainer:
         client_num = int(self.client_name.split("_")[-1])
         global_worksheet.cell(row=int(self.version_num)+2, column=client_num+12, value = str(round(float(best_global_acc),4)*100)+"%")
         
+        if self.config.dataset == "elliptic":
+            best_global_f1 = max(self.global_cls_f1_list)
+            max_global_f1_index = self.global_cls_f1_list.index(best_global_f1)
+            recall = self.global_cls_recall_list[max_global_f1_index]
+            precision = self.global_cls_precision_list[max_global_f1_index]
+            print(f"best_global_f1_index: {max_global_f1_index}, best_global_f1: {best_global_f1} recall: {recall}, precision: {precision}",)
             global_worksheet.cell(row=int(self.version_num)+2, column=client_num+19, value = str(round(float(best_global_f1),4)*100)+"%")
         
         #load model in best local test acc
