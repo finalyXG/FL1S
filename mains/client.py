@@ -162,8 +162,8 @@ def clients_main(config):
             display_name="best_local_acc",
         ),
     ]
-    with tf.summary.create_file_writer(os.path.join(config.logdir,config.clients_name)).as_default():
-        hp.hparams_config(hparams=HPARAMS, metrics=METRICS)
+    # with tf.summary.create_file_writer(os.path.join(config.logdir,config.clients_name)).as_default():
+    #     hp.hparams_config(hparams=HPARAMS, metrics=METRICS)
 
     # create an instance of the model
     # for model_version in HP_GAN_VERSION.domain.values:
@@ -199,26 +199,42 @@ def clients_main(config):
                         record_hparams_file.close()
 
                         print('--- Starting trial: %s' % version_num)
+                        # with tf.summary.create_file_writer(os.path.join(config.logdir,config.clients_name,str(version_num))).as_default():
+                        hp.hparams(hparams)  # record the values used in this trial
+                        if config.dataset != "elliptic":
+                            cls = Classifier(config)
+                        else:
+                            cls = ClassifierElliptic(config)
+
+                        feature_data = None
+                        initial_feature_center = None
+                        sample = tf.expand_dims(all_test_x[0], axis=0)
+                        config.latent_dim = cls.get_features(sample).shape[1]
+                        print("feture dimension", config.latent_dim)
                         if not config.initial_client:   # get initial_client's features
                             feature_data, client_data, cls = create_feature_dataset(config, client_data, cls)
                         elif config.whether_initial_feature_center:
                             initial_feature_center = generate_initial_feature_center(config, all_test_y)
+                        generator = AC_Generator(config)
+                        discriminator = AC_Discriminator(config)
 
+                        trainer = Trainer(config.clients_name, version_num, client_data, all_test_x, all_test_y, initial_feature_center, pre_features_central, cls, discriminator, generator,config,hparams)
                         cls.init_cur_epoch()
+                        cur_features_central, real_features, best_global_acc, best_local_acc = trainer.train_cls(worksheet,global_worksheet, feature_data, suffix)
+                        features_label = trainer.get_features_label()
                             ### GAN
                             # print("after train cls")
                             # disc_test_loss, gen_test_loss, fake_features = trainer.trainGAN()
-                            tf.summary.scalar("best_global_acc", best_global_acc, step=1)
-                            tf.summary.scalar("best_local_acc", best_local_acc, step=1)
-                            for k,v in real_features.items():
-                                os.makedirs(f"tmp/{config.clients_name}/{version_num}{suffix}/{k}_layer_output")
-                                with open(f"tmp/{config.clients_name}/{version_num}{suffix}/{k}_layer_output/features_central.pkl","wb") as fp:
-                                        pickle.dump(cur_features_central[k], fp)
-                                np.save(f"tmp/{config.clients_name}/{version_num}{suffix}/{k}_layer_output/real_features",v)
-                                np.save(f"tmp/{config.clients_name}/{version_num}{suffix}/{k}_layer_output/features_label",features_label)
+                            # tf.summary.scalar("best_global_acc", best_global_acc, step=1)
+                            # tf.summary.scalar("best_local_acc", best_local_acc, step=1)
+                        with open(f"tmp/{config.clients_name}/{version_num}{suffix}/features_central.pkl","wb") as fp:
+                            pickle.dump(cur_features_central, fp)
+                        np.save(f"tmp/{config.clients_name}/{version_num}{suffix}/real_features",real_features)
+                        np.save(f"tmp/{config.clients_name}/{version_num}{suffix}/features_label",features_label)
                         version_num += 1
                 
     workbook.save(f'./tmp/{config.clients_name}/metrics_record.xlsx')
+    global_workbook.save(f'./tmp/{config.sample_ratio}_global_metrics_record.xlsx')
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -274,6 +290,7 @@ if __name__ == '__main__':
     )
     parser.add_argument("--features_central_client_name_list", type=str, nargs='+', default=["clients_1"])  #use which version as initial client( only for initial_client==0)
     parser.add_argument("--features_central_version_list", type=str,nargs='+',  default=["0"])  #use which version as initial client( only for initial_client==0)
+    parser.add_argument("--use_initial_model_weight", type=int, default=0)  #use which version as initial client( only for initial_client==0)
     parser.add_argument("--use_assigned_epoch_feature", type=int, default=0)  #use 0 means False==> use feature in best local acc( only for initial_client==0)
     parser.add_argument("--use_dirichlet_split_data", type=int, default=1)  #use 0 means False, 1 means True
     parser.add_argument("--use_same_kernel_initializer", type=int, default=1)
@@ -308,6 +325,7 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     args.initial_client = bool(args.initial_client)
+    args.use_initial_model_weight = bool(args.use_initial_model_weight)
     args.use_dirichlet_split_data = bool(args.use_dirichlet_split_data)
     print("client:", args.clients_name)
     print("Whether initial_client:", args.initial_client)

@@ -16,7 +16,7 @@ import time
 import random
 import pickle
 class Trainer:
-    def __init__(self, client_name, version_num, client_data,all_test_x,all_test_y, pre_features_central, cls, discriminator, generator, config, hparams):
+    def __init__(self, client_name, version_num, client_data,all_test_x,all_test_y, initial_feature_center, pre_features_central, cls, discriminator, generator, config, hparams):
         self.client_name = client_name
         self.version_num = str(version_num)
         self.cls = cls
@@ -28,6 +28,7 @@ class Trainer:
         np.random.seed(config.random_seed)
         random.seed(config.random_seed)
         self.pre_features_central = pre_features_central
+        self.initial_feature_center = initial_feature_center
         #split data
         (train_data, test_data) = client_data
         self.all_test_x,self.all_test_y = all_test_x,all_test_y
@@ -121,13 +122,13 @@ class Trainer:
         CLS_compare_test_log_dir = 'logs/CLS_gradient_tape/' +client_name +"/"+ self.version_num + '/global'
 
         # generator_img_logdir = "logs/train_data/" +client_name +"/"+ self.version_num
-        self.GAN_train_summary_writer = tf.summary.create_file_writer(GAN_train_log_dir)
-        self.GAN_test_summary_writer = tf.summary.create_file_writer(GAN_test_log_dir)
+        # self.GAN_train_summary_writer = tf.summary.create_file_writer(GAN_train_log_dir)
+        # self.GAN_test_summary_writer = tf.summary.create_file_writer(GAN_test_log_dir)
         self.CLS_train_summary_writer = tf.summary.create_file_writer(CLS_train_log_dir)
         self.CLS_test_summary_writer = tf.summary.create_file_writer(CLS_test_log_dir)
         self.CLS_compare_test_acc_summary_writer = tf.summary.create_file_writer(CLS_compare_test_log_dir)
         # self.generator_img_writer = tf.summary.create_file_writer(generator_img_logdir)
-        self.compare_fake_real_img_writer = tf.summary.create_file_writer( "logs/compare_fake_real_img/" +client_name +"/"+self.version_num)
+        # self.compare_fake_real_img_writer = tf.summary.create_file_writer( "logs/compare_fake_real_img/" +client_name +"/"+self.version_num)
 
     def __call__(self):
         if self.init is None:
@@ -239,7 +240,7 @@ class Trainer:
                 for (img,img_label), (features,features_label) in self.train_data:
                     self.train_cls_step(img, img_label, features, features_label)
             else:
-                for batch_idx,(x, y)  in enumerate(self.train_data.batch(self.batch_size,drop_remainder=True)):
+                for x, y in self.train_data:
                     self.train_cls_step(x,y)
 
             with self.CLS_train_summary_writer.as_default():
@@ -264,12 +265,12 @@ class Trainer:
                 self.global_test_cls_step(X_test, Y_test)
 
             with self.CLS_compare_test_acc_summary_writer.as_default():
-                tf.summary.scalar('compare_cls_accuracy_'+self.client_name, self.global_cls_test_accuracy.result(), step=cur_epoch)
+                tf.summary.scalar('compare_cls_accuracy_'+self.client_name, self.cls_global_test_accuracy.result(), step=cur_epoch)
             
-            self.global_cls_acc_list.append(self.global_cls_test_accuracy.result())
+            self.global_cls_acc_list.append(self.cls_global_test_accuracy.result())
             self.local_cls_acc_list.append(self.cls_test_accuracy.result())
             
-            if self.global_cls_test_accuracy.result() == max(self.global_cls_acc_list):
+            if self.cls_global_test_accuracy.result() == max(self.global_cls_acc_list):
                 # self.cls.save_weights(checkpoint_global_path.format(epoch=cur_epoch))
                 del_list = os.listdir(checkpoint_dir+'global')
                 del_list2 = os.listdir(checkpoint_dir+'global_checkpoint')
@@ -283,7 +284,7 @@ class Trainer:
                 checkpoint.save(file_prefix = checkpoint_global_prefix)
                 self.cls.save_weights(f"{checkpoint_dir}/global/cp-{cur_epoch:04d}.ckpt")
                 #record metric in best global acc into excel
-                for col_num,col_value in enumerate([cur_epoch,  self.global_cls_test_accuracy.result(), self.cls_test_accuracy.result()]):
+                for col_num,col_value in enumerate([cur_epoch,  self.cls_global_test_accuracy.result(), self.cls_test_accuracy.result()]):
                     worksheet.cell(row=int(self.version_num)+2, column=col_num+11, value = float(col_value))
 
             if self.cls_test_accuracy.result() == max(self.local_cls_acc_list):
@@ -301,7 +302,7 @@ class Trainer:
                 self.cls.save_weights(f"{checkpoint_dir}/local/cp-{cur_epoch:04d}.ckpt")
 
                 #record metric in best local acc into excel
-                for col_num,col_value in enumerate([self.version_num, self.original_cls_loss_weight, self.cos_loss_weight, self.feat_loss_weight, cur_epoch, self.cls_train_accuracy.result(),self.cls_test_accuracy.result(), self.global_cls_test_accuracy.result(),self.cls_train_distance_loss.result()]):
+                for col_num,col_value in enumerate([self.version_num, self.original_cls_loss_weight, self.cos_loss_weight, self.feat_loss_weight, cur_epoch, self.cls_train_accuracy.result(),self.cls_test_accuracy.result(), self.cls_global_test_accuracy.result(),self.cls_train_distance_loss.result()]):
                     worksheet.cell(row=int(self.version_num)+2, column=col_num+1, value = float(col_value))
 
             if cur_epoch in self.initial_client_ouput_feat_epochs:
@@ -321,6 +322,7 @@ class Trainer:
                                     self.cls_train_accuracy.result()*100,
                                     self.cls_test_loss.result(), 
                                     self.cls_test_accuracy.result()*100,
+                                    self.cls_global_test_accuracy.result()*100,))
             if self.config.dataset == "elliptic":
                 self.global_cls_f1_list.append(self.cls_global_test_elliptic_f1.result())
                 self.global_cls_recall_list.append(self.cls_global_test_elliptic_recall.result())
@@ -338,7 +340,7 @@ class Trainer:
             self.cls_test_loss.reset_states()
             self.cls_train_accuracy.reset_states()
             self.cls_test_accuracy.reset_states()
-            self.global_cls_test_accuracy.reset_states()
+            self.cls_global_test_accuracy.reset_states()
             self.cls_train_distance_loss.reset_states()
             self.cls_train_feature_loss.reset_states()
             self.cls_train_classify_loss.reset_states()
