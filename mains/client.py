@@ -1,5 +1,5 @@
 import tensorflow as tf
-from models.example_model import Classifier, C_Discriminator,C_Generator, AC_Discriminator, AC_Generator
+from models.example_model import Classifier, ClassifierElliptic, C_Discriminator,C_Generator, AC_Discriminator, AC_Generator
 from trainers.example_trainer import Trainer
 from data_loader.data_generator import DataGenerator
 from tensorboard.plugins.hparams import api as hp
@@ -9,10 +9,17 @@ import argparse
 import pickle
 import random
 import openpyxl
+import copy
 
-def concatenate_feature_labels(config, tail_path):
+def concatenate_feature_labels(config, tail_path, cls):
+    weight_object = []
+    data_amts = len(config.features_central_client_name_list)
     for index, (client_name, client_version) in enumerate(zip(config.features_central_client_name_list, config.features_central_version_list)):
         path = f"./tmp/{client_name}/{client_version}/{tail_path}"
+        if config.use_initial_model_weight:
+            checkpoint_dir = f'{path}/cls_training_checkpoints/local/'
+            cls.load_weights(tf.train.latest_checkpoint(checkpoint_dir))
+            weight_object.append(copy.deepcopy(cls.weights))
         if index:
             tmp_feature = np.load(f"{path}/real_features.npy",allow_pickle=True)
             tmp_labels = np.load(f"{path}/features_label.npy",allow_pickle=True)
@@ -21,9 +28,16 @@ def concatenate_feature_labels(config, tail_path):
         else:
             feature = np.load(f"{path}/real_features.npy",allow_pickle=True)
             labels = np.load(f"{path}/features_label.npy",allow_pickle=True)
-    return feature, labels
+    if config.use_initial_model_weight and data_amts > 1:
+        w_avg = copy.deepcopy(weight_object[0])
+        for index in range(len(w_avg)):
+            w_avg[index] = w_avg[index]/data_amts
+            for i in range(1, data_amts):
+                w_avg[index] += weight_object[i][index]/data_amts
+        cls.set_weights(copy.deepcopy(w_avg))
+    return feature, labels, cls
 
-def create_feature_dataset(config, client_data):
+def create_feature_dataset(config, client_data, cls):
     '''
     generate initial client feature to dataset
     '''
@@ -31,7 +45,7 @@ def create_feature_dataset(config, client_data):
         tail_path = f"assigned_epoch/{config.use_assigned_epoch_feature}/"
     else:
         tail_path = f""
-    feature, labels = concatenate_feature_labels(config, tail_path)
+    feature, labels, cls = concatenate_feature_labels(config, tail_path, cls)
 
     (train_data, test_data) = client_data
     client_train_data_num = len(train_data)
@@ -55,6 +69,7 @@ def create_feature_dataset(config, client_data):
     print("after train_data",len(labels))
     feature_dataset = tf.data.Dataset.from_tensor_slices(
             (np.array(feature), np.array(labels))).shuffle(len(labels))
+    return feature_dataset, client_data, cls
 
 def generate_initial_feature_center(config, y):
     initial_feature_center = [tf.random.normal([config.latent_dim, 1])]
@@ -184,12 +199,12 @@ def clients_main(config):
                         record_hparams_file.close()
 
                         print('--- Starting trial: %s' % version_num)
+                        if not config.initial_client:   # get initial_client's features
+                            feature_data, client_data, cls = create_feature_dataset(config, client_data, cls)
                         elif config.whether_initial_feature_center:
                             initial_feature_center = generate_initial_feature_center(config, all_test_y)
 
-                            trainer = Trainer(config.clients_name, version_num, client_data, all_test_x, all_test_y, pre_features_central, cls, discriminator, generator,config,hparams)
-                            cur_features_central, real_features, best_global_acc, best_local_acc = trainer.train_cls(worksheet,feature_data, suffix)
-                            features_label = trainer.get_features_label()
+                        cls.init_cur_epoch()
                             ### GAN
                             # print("after train cls")
                             # disc_test_loss, gen_test_loss, fake_features = trainer.trainGAN()
