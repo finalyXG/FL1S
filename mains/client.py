@@ -28,9 +28,9 @@ def create_feature_dataset(config, client_data):
     generate initial client feature to dataset
     '''
     if config.use_assigned_epoch_feature:
-        tail_path = f"assigned_epoch/{config.use_assigned_epoch_feature}/{config.features_ouput_layer[0]}_layer_output/"
+        tail_path = f"assigned_epoch/{config.use_assigned_epoch_feature}/"
     else:
-        tail_path = f"{config.features_ouput_layer[0]}_layer_output/"
+        tail_path = f""
     feature, labels = concatenate_feature_labels(config, tail_path)
 
     (train_data, test_data) = client_data
@@ -65,9 +65,9 @@ def clients_main(config):
         for client_name, client_version in zip(config.features_central_client_name_list, config.features_central_version_list):
             suffix += f"_{client_name}_{client_version}" #indicate clients_name version features center
             if config.use_assigned_epoch_feature:
-                path = f'tmp/{client_name}/{client_version}/assigned_epoch/{config.use_assigned_epoch_feature}/{config.features_ouput_layer[0]}_layer_output/'
+                path = f'tmp/{client_name}/{client_version}/assigned_epoch/{config.use_assigned_epoch_feature}/'
             else:
-                path = f'tmp/{client_name}/{client_version}/{config.features_ouput_layer[0]}_layer_output/'
+                path = f'tmp/{client_name}/{client_version}/'
             with open(f'{path}/features_central.pkl','rb') as fp: 
                 features_central = pickle.load(fp) #load features_central pre-saved
             if pre_features_central:
@@ -238,7 +238,7 @@ if __name__ == '__main__':
     parser.add_argument("--learning_rate_list", type=float, nargs='+', default=[0.001]) 
     parser.add_argument("--batch_size_list", type=int, nargs='+', default=[32]) 
 
-    parser.add_argument("--features_ouput_layer", help="The index of features output Dense layer",type=int, nargs='+', default=[-2])
+    parser.add_argument("--features_ouput_layer", help="The index of features output Dense layer",type=int, default=-2)
     parser.add_argument("--GAN_num_epochs", type=int, default=1)
     parser.add_argument("--test_feature_num", type=int, default=500)
     parser.add_argument("--test_sample_num", help="The number of real features and fake features in tsne img", type=int, default=500) 

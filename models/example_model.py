@@ -136,14 +136,10 @@ class Classifier(BaseModel):
             x = layer(x)
         return x
     
-    def get_features(self, inputs):
-        feature_list = {}
-        for features_ouput_layer_num in self.config.features_ouput_layer:
-            x = np.copy(inputs)
-            for layer in self.feature_layers[:features_ouput_layer_num]:
-                x = layer(x)
-            feature_list[features_ouput_layer_num] = x
-        return feature_list
+    def get_features(self, x):
+        for layer in self.feature_layers[:self.config.features_ouput_layer]:
+            x = layer(x)
+        return x
     
 class C_Discriminator(BaseModel):
     def __init__(self,config):

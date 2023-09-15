@@ -146,20 +146,13 @@ class Trainer:
     
     def get_features_central(self, images, labels):  
         #using client train dataset to generate features central
-        # feature_avg_dic = {}
-        labels = np.argmax(labels, axis=1)
-        feature_output_layer_feature_avg_dic = {i:{} for i in self.config.features_ouput_layer}
+        feature_avg_dic = {}
         for label in set(labels):
             label_index = np.where(labels==label)
-            # feature = self.cls.get_features(images[label_index])
-            # avg_feature = tf.reduce_mean(feature, axis=0) 
-            # feature_avg_dic[label] = avg_feature
-            feature_list = self.cls.get_features(images[label_index])
-            for k,v in feature_list.items():
-                avg_feature = tf.reduce_mean(v, axis=0) 
-                feature_output_layer_feature_avg_dic[k][label] = avg_feature
-        # return feature_avg_dic
-        return feature_output_layer_feature_avg_dic
+            feature = self.cls.get_features(images[label_index])
+            avg_feature = tf.reduce_mean(feature, axis=0) 
+            feature_avg_dic[label] = avg_feature
+        return feature_avg_dic
 
     def count_features_central_distance(self, images, labels):
         # dist = tf.linalg.norm(new_feature_avg_dic-self.pre_features_central)
@@ -267,13 +260,10 @@ class Trainer:
                 self.cls.save_weights(f"{path}/cp-{cur_epoch:04d}.ckpt")
                 features_central = self.get_features_central(self.train_x,self.train_y)
                 real_features = self.generate_real_features()
-                for k,v in real_features.items():
-                    os.makedirs(f"{path}/{k}_layer_output")
-                    with open(f"{path}/{k}_layer_output/features_central.pkl","wb") as fp:
-                        pickle.dump(features_central[k], fp)
-                    np.save(f"{path}/{k}_layer_output/real_features",v)
-                    np.save(f"{path}/{k}_layer_output/features_label",self.train_y)
-
+                with open(f"{path}/features_central.pkl","wb") as fp:
+                    pickle.dump(features_central, fp)
+                np.save(f"{path}/real_features",real_features)
+                np.save(f"{path}/features_label",self.train_y)
 
             template = 'Epoch {}, Loss: {}, Accuracy: {}, Test Loss: {}, Test Accuracy: {}, Global Test Accuracy: {}'
             print (template.format(cur_epoch+1,
