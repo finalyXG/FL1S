@@ -117,7 +117,64 @@ class Classifier(BaseModel):
     
     def call_2(self, x):
         #for other client
-        for layer in self.feature_layers[self.config.features_ouput_layer[0]:]:
+        for layer in self.feature_layers[self.config.features_ouput_layer:]:
+            x = layer(x)
+        return x
+    
+    def get_features(self, x):
+        for layer in self.feature_layers[:self.config.features_ouput_layer]:
+            x = layer(x)
+        return x
+    
+class ClassifierElliptic(BaseModel):
+    def __init__(self,config):
+        super(ClassifierElliptic, self).__init__(config=config)
+        if config.use_same_kernel_initializer:
+            print("use_same_kernel_initializer")
+            self.layer_build("glorot_uniform")
+        else:
+            if config.clients_name == "clients_1": 
+                print("for clients_1 use default initial model")
+                self.layer_build("glorot_uniform")
+            elif config.clients_name == "clients_2":
+                print("for clients_2 use glorot_normal")
+                self.layer_build("glorot_normal")
+            else:
+                print("for other client use random_normal")
+                self.layer_build("random_normal")
+        self.feature_layers = [self.dense_1,self.dense_2]#,self.dense_4,self.dense_5,self.dense_6,self.dense_3,self.dense_7
+
+    # def layer_build(self, kernel_initializer):
+    #     output_bias = tf.keras.initializers.Constant(self.config.elliptic_initial_bias)
+    #     self.dense_1 = Dense(512, activation=tf.nn.leaky_relu , input_shape=(self.config.input_feature_size,), kernel_initializer=kernel_initializer)
+    #     self.dense_2 = Dense(256, activation=tf.nn.leaky_relu, kernel_initializer=kernel_initializer )
+    #     self.dense_3 = Dense(128, activation=tf.nn.leaky_relu, kernel_initializer=kernel_initializer)
+    #     # self.dense_4 = Dense(64, activation=tf.nn.leaky_relu, kernel_initializer=kernel_initializer)
+    #     # self.dense_5 = Dense(64, activation=tf.nn.leaky_relu, kernel_initializer=kernel_initializer)
+    #     # self.dense_6 = Dense(64, activation=tf.nn.leaky_relu, kernel_initializer=kernel_initializer)
+    #     self.dense_7 = Dense(1, activation='sigmoid', kernel_initializer=kernel_initializer)  #,bias_initializer=output_bias
+
+    # def call(self, x):
+    #     x = self.dense_1(x)
+    #     x = self.dense_2(x)
+    #     x = self.dense_3(x)
+    #     # x = self.dense_4(x)
+    #     # x = self.dense_5(x)
+    #     # x = self.dense_6(x)
+    #     return self.dense_7(x)
+
+    def layer_build(self, kernel_initializer):
+        output_bias = tf.keras.initializers.Constant(self.config.elliptic_initial_bias)
+        self.dense_1 = Dense(50, activation=tf.nn.leaky_relu , input_shape=(self.config.input_feature_size,), kernel_initializer=kernel_initializer)
+        self.dense_2 = Dense(1, activation='sigmoid', kernel_initializer=kernel_initializer)#, bias_initializer=output_bias
+
+    def call(self, x):
+        x = self.dense_1(x)
+        return self.dense_2(x)
+    
+    def call_2(self, x):
+        #for other client
+        for layer in self.feature_layers[self.config.features_ouput_layer:]:
             x = layer(x)
         return x
     
