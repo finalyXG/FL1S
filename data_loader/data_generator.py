@@ -78,17 +78,10 @@ class DataGenerator:
                 f"Dataset '{config.data_random_seed}' has not been implemented, please choose either mnist, svhn or fashion"
             )
         self.dataset_train = list(zip(self.input, self.y))
-        if self.config.sample_ratio < 1:
-            num_samples_keep = int(len(self.dataset_train) * self.config.sample_ratio)
-            indices = np.random.permutation(len(self.dataset_train))[
-                :num_samples_keep
-            ]
-            self.dataset_train = np.array(self.dataset_train, dtype=object)[indices]
         self.data_test = list(zip(self.test_x, self.test_y))
-        #shard data and place at each client
+        # #shard data and place at each client
         self.client_train_size = len(self.dataset_train)//config.num_clients
         self.client_test_size = len(self.data_test) // config.num_clients
-        print("len total train",len(self.dataset_train))        
 
         if config.dataset != "elliptic":
             self.input = self.input  / 255 # Normalize the images to [0, 1]
@@ -101,6 +94,12 @@ class DataGenerator:
             else:
                 self.clients = self.create_clients()
         else:
+            if self.config.sample_ratio < 1:
+                num_samples_keep = int(len(self.dataset_train) * self.config.sample_ratio)
+                indices = np.random.permutation(len(self.dataset_train))[
+                    :num_samples_keep
+                ]
+                self.dataset_train = np.array(self.dataset_train, dtype=object)[indices]
             x, targets = zip(*self.dataset_train)
             new_train_data = pd.concat([pd.DataFrame(x), pd.DataFrame(targets,columns=['class'])], axis=1)
             print(new_train_data.shape)
@@ -153,10 +152,17 @@ class DataGenerator:
         :return: user data splits as a list of torch.dataset.Subset objects
         """
         dataset_train = self.dataset_train
+        if self.config.sample_ratio < 1:
+            num_samples_keep = int(len(dataset_train) * self.config.sample_ratio)
+            indices = np.random.permutation(len(dataset_train))[
+                :num_samples_keep
+            ] 
+            dataset_train = np.array(dataset_train, dtype=object)[indices]
+
+        print("len total train",len(dataset_train))
+
         x, targets = zip(*dataset_train)
-
         targets = np.array(targets)
-
         class_idxs = {}
 
         for i in range(self.config.num_classes):
