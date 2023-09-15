@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 import tensorflow as tf
 import random
 import matplotlib.pyplot as plt
@@ -50,42 +51,94 @@ class DataGenerator:
             self.test_y = self.test_y.squeeze()
             self.y[np.where(self.y == 10)] = 0
             self.test_y[np.where(self.test_y == 10)] = 0
+        elif config.dataset == "elliptic":
+            config.num_classes = 2
+            df_classes = pd.read_csv("../elliptic_bitcoin_dataset/elliptic_txs_classes.csv")
+            df_features = pd.read_csv("../elliptic_bitcoin_dataset/elliptic_txs_features.csv", header=None)
+            colNames1 = {'0': 'txId', '1': "Time step"}
+            colNames2 = {str(ii+2): "Local_feature_" + str(ii+1) for ii in range(93)}
+            colNames3 = {str(ii+95): "Aggregate_feature_" + str(ii+1) for ii in range(72)}
+            colNames = dict(colNames1, **colNames2, **colNames3 )
+            colNames = {int(jj): item_kk for jj,item_kk in colNames.items()}
+            df_features = df_features.rename(columns=colNames)
+            df_classes.loc[df_classes['class'] == '1', 'class'] = 1
+            df_classes.loc[df_classes['class'] == '2', 'class'] = 0
+            df = df_features.merge(df_classes, how='inner', on='txId')
+            df = df.drop(df[df['class'] == 'unknown'].index)
+            df = df.sample(frac=1).reset_index(drop=True)
+            train_data = df[df['Time step'] < 35]
+            test_data = df[df['Time step'] >= 35]
+            neg, pos = np.bincount(train_data['class'])
+            config.elliptic_initial_bias = np.log([pos/neg])
+            self.input, self.y = np.array(train_data.drop(["class","txId"],axis=1)).astype('float32'), np.array(train_data["class"]).astype('float32')
+            self.test_x, self.test_y = np.array(test_data.drop(["class","txId"],axis=1)).astype('float32'), np.array(test_data["class"]).astype('float32')
+            config.input_feature_size = self.input.shape[-1]
         else:
             raise NotImplementedError(
                 f"Dataset '{config.data_random_seed}' has not been implemented, please choose either mnist, svhn or fashion"
             )
-        
-        self.input = self.input  / 255 # Normalize the images to [0, 1]
-        self.test_x = self.test_x  / 255
-        # change y lable to one_hot
-        self.y = tf.keras.utils.to_categorical(self.y, config.num_classes)
-        self.test_y = tf.keras.utils.to_categorical(self.test_y, config.num_classes)
-        if config.use_dirichlet_split_data:
-            self.clients = self.split_data_dirichlet()
+        self.dataset_train = list(zip(self.input, self.y))
+        if self.config.sample_ratio < 1:
+            num_samples_keep = int(len(self.dataset_train) * self.config.sample_ratio)
+            indices = np.random.permutation(len(self.dataset_train))[
+                :num_samples_keep
+            ]
+            self.dataset_train = np.array(self.dataset_train, dtype=object)[indices]
+        self.data_test = list(zip(self.test_x, self.test_y))
+        #shard data and place at each client
+        self.client_train_size = len(self.dataset_train)//config.num_clients
+        self.client_test_size = len(self.data_test) // config.num_clients
+        print("len total train",len(self.dataset_train))        
+
+        if config.dataset != "elliptic":
+            self.input = self.input  / 255 # Normalize the images to [0, 1]
+            self.test_x = self.test_x  / 255
+            # change y lable to one_hot
+            # self.y = tf.keras.utils.to_categorical(self.y, config.num_classes)
+            # self.test_y = tf.keras.utils.to_categorical(self.test_y, config.num_classes)
+            if config.use_dirichlet_split_data:
+                self.clients = self.split_data_dirichlet()
+            else:
+                self.clients = self.create_clients()
         else:
-            self.clients = self.create_clients(config.num_clients)
+            x, targets = zip(*self.dataset_train)
+            new_train_data = pd.concat([pd.DataFrame(x), pd.DataFrame(targets,columns=['class'])], axis=1)
+            print(new_train_data.shape)
+            user_train_data = []
+            timestamp_range = int(35/config.num_clients)
+            print("timestamp_range: ",timestamp_range)
+            print(config.clients_name)
+            print("---------")
+            for index, timestamp in enumerate(range(1,35,timestamp_range)):
+                print("client_", index+1," timestamp: [",timestamp,"->",timestamp+timestamp_range,")")
+                client_data = new_train_data[(new_train_data[0] >= float(timestamp)) & (new_train_data[0] < float(timestamp)+timestamp_range)]
+                client_input = np.array(client_data.drop(["class"],axis=1)).astype('float32')
+                client_y = np.array(client_data["class"]).astype('float32')
+                for k,v in client_data.groupby("class"):
+                    print(k,": ",v.shape)
+                client_data = list(zip(client_input, client_y))
+                user_train_data.append(client_data)
+            self.data_test = list(zip(self.test_x, self.test_y))
+            self.client_test_size = len(self.data_test) // config.num_clients
+            user_test_data = [self.data_test[test_index:test_index+ self.client_test_size] for test_index in range(0, self.client_test_size*self.config.num_clients, self.client_test_size)]
+            dataset = list(zip(user_train_data, user_test_data))
+            client_names = ['{}_{}'.format('clients', i+1) for i in range(self.config.num_clients)]
+
+            self.clients = {client_names[i] : dataset[i] for i in range(len(client_names))}
         
     def next_batch(self, batch_size):
         idx = np.random.choice(len(self.y), batch_size)
         yield self.input[idx], self.y[idx]
 
-    def create_clients(self, num_clients=2, initial='clients'):
+    def create_clients(self, initial='clients'):
         #create a list of client names
-        client_names = ['{}_{}'.format(initial, i+1) for i in range(num_clients)]
+        client_names = ['{}_{}'.format(initial, i+1) for i in range(self.config.num_clients)]
 
         #randomize the data
-        data_train = list(zip(self.input, self.y))
-        data_test = list(zip(self.test_x, self.test_y))
-
         # random.shuffle(data_train)
         # random.shuffle(data_test)
 
-        #shard data and place at each client
-        self.client_train_size = len(data_train)//num_clients
-        self.client_test_size = len(data_test) // num_clients
-
-        #self.config.client_train_num
-        shards = [(data_train[train_index:train_index + self.config.client_train_num],data_test[test_index:test_index+ self.config.client_test_num]) for train_index,test_index in zip(range(0, self.client_train_size*num_clients, self.client_train_size),range(0, self.client_test_size*num_clients,self.client_test_size))]
+        shards = [(self.dataset_train[train_index:train_index + self.config.client_train_num],self.data_test[test_index:test_index+ self.config.client_test_num]) for train_index,test_index in zip(range(0, self.client_train_size*self.config.num_clients, self.client_train_size),range(0, self.client_test_size*self.config.num_clients,self.client_test_size))]
 
         #number of clients must equal number of shards
         assert(len(shards) == len(client_names))
@@ -99,20 +152,10 @@ class DataGenerator:
 
         :return: user data splits as a list of torch.dataset.Subset objects
         """
-        dataset_train = list(zip(self.input, self.y))
-        if self.config.sample_ratio < 1:
-            num_samples_keep = int(len(dataset_train) * self.config.sample_ratio)
-            indices = np.random.permutation(len(dataset_train))[
-                :num_samples_keep
-            ] 
-            dataset_train = np.array(dataset_train, dtype=object)[indices]
+        dataset_train = self.dataset_train
+        x, targets = zip(*dataset_train)
 
-        print("len total train",len(dataset_train))
-
-        x, y = zip(*dataset_train)
-
-        # Getting indices for each class
-        targets = np.argmax(y, axis=1)
+        targets = np.array(targets)
 
         class_idxs = {}
 
@@ -180,10 +223,9 @@ class DataGenerator:
        
        
         ### split test data
-        test_datat = list(zip(self.test_x, self.test_y))
-        client_test_size = len(test_datat) // self.config.num_clients
+        test_data = list(zip(self.test_x, self.test_y))
 
-        user_test_data = [test_datat[test_index:test_index+ client_test_size] for test_index in range(0, client_test_size*self.config.num_clients,client_test_size)]
+        user_test_data = [test_data[test_index:test_index+ self.client_test_size] for test_index in range(0, self.client_test_size*self.config.num_clients, self.client_test_size)]
         dataset = list(zip(user_data, user_test_data))
 
         assert(len(dataset) == len(client_names))
