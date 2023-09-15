@@ -34,14 +34,20 @@ def show_features_distribution(config, client_name,version_num):
     df["comp-1"] = z[:,0]
     df["comp-2"] = z[:,1]
     #transfor one_hot to int
-    labels = np.argmax(label, axis=1)
+    # labels = np.argmax(label, axis=1)
     labels = tf.concat([labels, central_label],0)   #add feature center label
 
     df['classes'] = labels 
-    ax = sns.scatterplot(x="comp-1", y="comp-2", hue=df.classes.tolist(),
-                    palette=sns.color_palette("hls", 10),
-                    data=df)
-    
+    if config.dataset == "elliptic":
+        ax = sns.scatterplot(x="comp-1", y="comp-2", hue=df.classes.tolist(),
+                    # palette=sns.color_palette("hls", 2),
+                    data=df) 
+    else:   
+        print("other dataset")
+        ax = sns.scatterplot(x="comp-1", y="comp-2", hue=df.classes.tolist(),
+                        palette=sns.color_palette("hls", 10),
+                        data=df)
+        
     sns.move_legend(ax, "upper left", bbox_to_anchor=(1, 1))
     for i,label in zip(z[-10:],central_label):
         ax.text(i[0], i[1], label)
@@ -175,7 +181,11 @@ if __name__ == '__main__':
     parser.add_argument("--clients_name_list", type=str, nargs='+', default=['clients_1'])
     parser.add_argument("--clients_version_list", type=str, nargs='+', default=['0'])
     parser.add_argument("--use_dirichlet_split_data", type=int, default=1)  #use 0 means False, 1 means True
-
+    parser.add_argument(
+        "--dataset",
+        type=str,
+        default="mnist"
+    )
     parser.add_argument(
         "--sample_ratio",
         type=float,
