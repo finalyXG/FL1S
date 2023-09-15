@@ -223,9 +223,16 @@ class Trainer:
                                         cls=self.cls, max_to_keep=tf.Variable(1))
         #read latest_checkpoint
         # checkpoint.restore(tf.train.latest_checkpoint('./tmp/%s/13_with_0/cls_training_checkpoints/'%(self.client_name)+'local')) 
-
-        if feature_data:
-            self.train_data  = tf.data.Dataset.zip((self.train_data,feature_data)).batch(self.batch_size,drop_remainder=True)
+        if len(self.train_data) >  self.batch_size:
+            if feature_data:
+                self.train_data  = tf.data.Dataset.zip((self.train_data,feature_data)).batch(self.batch_size,drop_remainder=True)
+            else:
+                self.train_data  = self.train_data.batch(self.batch_size,drop_remainder=True)
+        else:
+            if feature_data:
+                self.train_data  = tf.data.Dataset.zip((self.train_data,feature_data)).batch(self.batch_size)
+            else:
+                self.train_data  = self.train_data.batch(self.batch_size)
         
         for cur_epoch in range(self.cls.cur_epoch_tensor.numpy(), self.config.cls_num_epochs + 1, 1):
             if feature_data:
