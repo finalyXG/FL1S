@@ -124,9 +124,10 @@ class Trainer:
             distance_loss = 0.0
             feature_loss = 0.0
             if self.pre_features_central is not None:
-                distance_loss = self.count_features_central_distance(images, labels)
+                distance_loss = self.count_features_central_distance(self.pre_features_central, images, labels)
                 feature_predictions = self.cls.call_2(features)
-                feature_loss = self.feature_loss_fn_cls(features_label, feature_predictions)
+            elif self.initial_feature_center is not None:
+                distance_loss = self.count_features_central_distance(self.initial_feature_center, images, labels)
             loss += (distance_loss*self.cos_loss_weight)
             loss += (feature_loss*self.feat_loss_weight)
         gradients = tape.gradient(loss, self.cls.trainable_variables)
@@ -154,13 +155,13 @@ class Trainer:
             feature_avg_dic[label] = avg_feature
         return feature_avg_dic
 
-    def count_features_central_distance(self, images, labels):
+    def count_features_central_distance(self, features_central, images, labels):
         # dist = tf.linalg.norm(new_feature_avg_dic-self.pre_features_central)
         feature = self.cls.get_features(images)
-        labels = np.argmax(labels, axis=1)
+        # labels = np.argmax(labels, axis=1)
         accumulate_loss = 0
-        for vector,label in zip(feature[self.config.features_ouput_layer[0]],labels):  
-            pre_vector = self.pre_features_central[label]
+        for vector,label in zip(feature,labels): 
+            pre_vector = features_central[label.numpy()]
             vector = tf.reshape(vector, [-1,])
             pre_vector = tf.reshape(pre_vector, [-1,])
             cos_sim = tf.tensordot(vector, pre_vector,axes=1)/(tf.linalg.norm(vector)*tf.linalg.norm(pre_vector)+0.001)

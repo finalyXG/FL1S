@@ -55,7 +55,25 @@ def create_feature_dataset(config, client_data):
     print("after train_data",len(labels))
     feature_dataset = tf.data.Dataset.from_tensor_slices(
             (np.array(feature), np.array(labels))).shuffle(len(labels))
-    return feature_dataset, client_data
+
+def generate_initial_feature_center(config, y):
+    initial_feature_center = [tf.random.normal([config.latent_dim, 1])]
+    for _ in range(config.num_classes-1):
+        while True:
+            flag = 1
+            tmp_feature = tf.random.normal([config.latent_dim, 1])
+            for feature in initial_feature_center:
+                feature = tf.reshape(feature, [-1,])
+                tmp_feature = tf.reshape(tmp_feature, [-1,])
+                cos_sim = tf.tensordot(feature, tmp_feature,axes=1)/(tf.linalg.norm(feature)*tf.linalg.norm(tmp_feature)+0.001)
+                if cos_sim > config.initial_feature_center_cosine_threshold:
+                    flag = 0
+                    break
+            if flag == 1:
+                initial_feature_center.append(tmp_feature)
+                break
+    feature_center_dict = {label: feature_center for label, feature_center in zip(set(y), initial_feature_center) }
+    return feature_center_dict
 
 def clients_main(config):
     data = DataGenerator(config)
@@ -155,15 +173,8 @@ def clients_main(config):
                         record_hparams_file.close()
 
                         print('--- Starting trial: %s' % version_num)
-                        with tf.summary.create_file_writer(os.path.join(config.logdir,config.clients_name,str(version_num))).as_default():
-                            hp.hparams(hparams)  # record the values used in this trial
-                            if not config.initial_client:   # get initial_client's features
-                                feature_data, client_data = create_feature_dataset(config, client_data)
-                            else:
-                                feature_data = None
-                            cls = Classifier(config)
-                            generator = AC_Generator(config)
-                            discriminator = AC_Discriminator(config)
+                        elif config.whether_initial_feature_center:
+                            initial_feature_center = generate_initial_feature_center(config, all_test_y)
 
                             trainer = Trainer(config.clients_name, version_num, client_data, all_test_x, all_test_y, pre_features_central, cls, discriminator, generator,config,hparams)
                             cur_features_central, real_features, best_global_acc, best_local_acc = trainer.train_cls(worksheet,feature_data, suffix)
@@ -223,6 +234,18 @@ if __name__ == '__main__':
         help="Define generate trained feature data in which epoch",
         default=[-1]
         ) 
+    parser.add_argument(
+        "--whether_initial_feature_center", 
+        type=int, 
+        help="Whether send random initial feature center to initial client",
+        default=0
+        ) 
+    parser.add_argument(
+        "--initial_feature_center_cosine_threshold",
+        type=float, 
+        help="Define the consine similarity socre each initial feature center have to reach",
+        default=0.5
+    )
     parser.add_argument("--features_central_client_name_list", type=str, nargs='+', default=["clients_1"])  #use which version as initial client( only for initial_client==0)
     parser.add_argument("--features_central_version_list", type=str,nargs='+',  default=["0"])  #use which version as initial client( only for initial_client==0)
     parser.add_argument("--use_assigned_epoch_feature", type=int, default=0)  #use 0 means False==> use feature in best local acc( only for initial_client==0)
