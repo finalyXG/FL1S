@@ -168,7 +168,7 @@ class Trainer:
             accumulate_loss += 1 - cos_sim
         return accumulate_loss / len(labels)
 
-    def train_cls(self, worksheet, feature_data, suffix):
+    def train_cls(self, worksheet, global_worksheet, feature_data, suffix):
         checkpoint_dir = './tmp/%s/%s%s/cls_training_checkpoints/'%(self.client_name, self.version_num,suffix)
         if not os.path.exists(checkpoint_dir):
             os.makedirs(checkpoint_dir+'local')  #store model weight
@@ -289,6 +289,37 @@ class Trainer:
         max_global_acc_index = self.global_cls_acc_list.index(best_global_acc)
         print("max_local_acc_index",max_local_acc_index,"max_local_acc",best_local_acc)
         print("max_global_acc_index",max_global_acc_index,"max_global_acc", best_global_acc)
+        if self.config.initial_client:
+            method = "bl"
+        elif self.config.use_initial_model_weight:
+            if self.feat_loss_weight > 0:
+                if self.cos_loss_weight > 0:
+                    method = "ours_avg_init_feat_cos"
+                else:
+                    method = "ours_avg_init_feat"
+            else:
+                method = "ours_avg_init"
+        elif self.config.feature_match_train_data == 0:
+            if self.cos_loss_weight > 0 and self.feat_loss_weight > 0:
+                method = 'all_extend'
+            else:
+                method = 'bl_feat_extend'
+        elif self.cos_loss_weight > 0 and self.feat_loss_weight > 0:
+            method = 'all'
+        elif self.cos_loss_weight > 0:
+            method = "bl+cos"
+        elif self.feat_loss_weight > 0:
+            method = "bl+feat"
+        else:
+            raise NotImplementedError(
+                f"Method error"
+            )
+        for col_num,col_value in enumerate([self.config.dataset, method, cur_epoch, self.config.alpha, self.batch_size,self.config.random_seed, self.config.data_random_seed, self.config.use_same_kernel_initializer, self.config.num_clients, self.config.sample_ratio]):
+            global_worksheet.cell(row=int(self.version_num)+2, column=col_num+1, value = col_value)
+        client_num = int(self.client_name.split("_")[-1])
+        global_worksheet.cell(row=int(self.version_num)+2, column=client_num+12, value = str(round(float(best_global_acc),4)*100)+"%")
+        
+            global_worksheet.cell(row=int(self.version_num)+2, column=client_num+19, value = str(round(float(best_global_f1),4)*100)+"%")
         
         #load model in best local test acc
         # checkpoint.restore(tf.train.latest_checkpoint(checkpoint_dir+'local')) 

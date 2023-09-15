@@ -110,6 +110,17 @@ def clients_main(config):
         workbook = openpyxl.load_workbook(f'./tmp/{config.clients_name}/metrics_record.xlsx')
         worksheet = workbook['0'] 
 
+    if not os.path.exists(f'./tmp/{config.sample_ratio}_global_metrics_record.xlsx'):
+        #create new exccel to record metrics in all clients
+        global_workbook = openpyxl.Workbook() 
+        global_worksheet = global_workbook.create_sheet("0", 0)
+        client_name = list(data.clients.keys())
+        for col_num,col_index in enumerate(['dataset', 'method', 'epoch','alpha','batch_size','random_seed','data_random_seed','kernel_initializer', 'client number', 'sample_ratio', 'global_acc', 'std'] + client_name+ ['global_f1', 'std'] + client_name):
+            global_worksheet.cell(row=1, column=col_num+1, value = col_index) 
+    else: 
+        global_workbook = openpyxl.load_workbook(f'./tmp/{config.sample_ratio}_global_metrics_record.xlsx')
+        global_worksheet = global_workbook['0'] 
+
     all_test_x,all_test_y = data.test_x, data.test_y
     client_data = data.clients[config.clients_name]
     HP_BATCH_SIZE = hp.HParam("batch_size", hp.Discrete(config.batch_size_list))
