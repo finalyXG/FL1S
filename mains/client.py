@@ -17,7 +17,7 @@ def concatenate_feature_labels(config, tail_path, cls):
     for index, (client_name, client_version) in enumerate(zip(config.features_central_client_name_list, config.features_central_version_list)):
         path = f"./tmp/{client_name}/{client_version}/{tail_path}"
         if config.use_initial_model_weight:
-            checkpoint_dir = f'{path}/cls_training_checkpoints/local/'
+            checkpoint_dir = f'./tmp/{client_name}/{client_version}/cls_training_checkpoints/local/'
             cls.load_weights(tf.train.latest_checkpoint(checkpoint_dir))
             weight_object.append(copy.deepcopy(cls.weights))
         if index:
