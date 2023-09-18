@@ -208,8 +208,6 @@ def clients_main(config):
 
                         feature_data = None
                         initial_feature_center = None
-                        sample = tf.expand_dims(all_test_x[0], axis=0)
-                        config.latent_dim = cls.get_features(sample).shape[1]
                         print("feture dimension", config.latent_dim)
                         if not config.initial_client:   # get initial_client's features
                             feature_data, client_data, cls = create_feature_dataset(config, client_data, cls)
