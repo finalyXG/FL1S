@@ -77,15 +77,11 @@ class DataGenerator:
             raise NotImplementedError(
                 f"Dataset '{config.data_random_seed}' has not been implemented, please choose either mnist, svhn or fashion"
             )
-        self.dataset_train = list(zip(self.input, self.y))
-        self.data_test = list(zip(self.test_x, self.test_y))
-        # #shard data and place at each client
-        self.client_train_size = len(self.dataset_train)//config.num_clients
-        self.client_test_size = len(self.data_test) // config.num_clients
-
         if config.dataset != "elliptic":
             self.input = self.input  / 255 # Normalize the images to [0, 1]
             self.test_x = self.test_x  / 255
+            self.dataset_train = list(zip(self.input, self.y))
+            self.data_test = list(zip(self.test_x, self.test_y))
             # change y lable to one_hot
             # self.y = tf.keras.utils.to_categorical(self.y, config.num_classes)
             # self.test_y = tf.keras.utils.to_categorical(self.test_y, config.num_classes)
@@ -94,6 +90,8 @@ class DataGenerator:
             else:
                 self.clients = self.create_clients()
         else:
+            self.dataset_train = list(zip(self.input, self.y))
+            self.data_test = list(zip(self.test_x, self.test_y))
             if self.config.sample_ratio < 1:
                 num_samples_keep = int(len(self.dataset_train) * self.config.sample_ratio)
                 indices = np.random.permutation(len(self.dataset_train))[
@@ -136,7 +134,9 @@ class DataGenerator:
         #randomize the data
         # random.shuffle(data_train)
         # random.shuffle(data_test)
-
+        # #shard data and place at each client
+        self.client_train_size = len(self.dataset_train)//self.config.num_clients
+        self.client_test_size = len(self.data_test) // self.config.num_clients
         shards = [(self.dataset_train[train_index:train_index + self.config.client_train_num],self.data_test[test_index:test_index+ self.config.client_test_num]) for train_index,test_index in zip(range(0, self.client_train_size*self.config.num_clients, self.client_train_size),range(0, self.client_test_size*self.config.num_clients,self.client_test_size))]
 
         #number of clients must equal number of shards
@@ -230,6 +230,7 @@ class DataGenerator:
        
         ### split test data
         test_data = list(zip(self.test_x, self.test_y))
+        self.client_test_size = len(self.data_test) // self.config.num_clients
 
         user_test_data = [test_data[test_index:test_index+ self.client_test_size] for test_index in range(0, self.client_test_size*self.config.num_clients, self.client_test_size)]
         dataset = list(zip(user_data, user_test_data))
