@@ -15,6 +15,7 @@ import shutil
 import time
 import random
 import pickle
+import copy
 class Trainer:
     def __init__(self, client_name, version_num, client_data,all_test_x,all_test_y, initial_feature_center, pre_features_central, cls, discriminator, generator, config, hparams):
         self.client_name = client_name
@@ -33,6 +34,7 @@ class Trainer:
         (train_data, test_data) = client_data
         self.all_test_x,self.all_test_y = all_test_x,all_test_y
         self.train_x,self.train_y = zip(*train_data)
+        self.train_data_num = len(self.train_y)
         self.test_x,self.test_y = zip(*test_data)
         self.train_x,self.train_y = np.array(self.train_x),np.array(self.train_y)
         self.test_x,self.test_y = np.array(self.test_x),np.array(self.test_y)
@@ -224,20 +226,26 @@ class Trainer:
                                         cls=self.cls, max_to_keep=tf.Variable(1))
         #read latest_checkpoint
         # checkpoint.restore(tf.train.latest_checkpoint('./tmp/%s/13_with_0/cls_training_checkpoints/'%(self.client_name)+'local')) 
-        if len(self.train_data) >  self.batch_size:
-            if feature_data:
-                self.train_data  = tf.data.Dataset.zip((self.train_data,feature_data)).batch(self.batch_size,drop_remainder=True)
-            else:
+        if feature_data is None:
+            if len(self.train_data) >  self.batch_size:
                 self.train_data  = self.train_data.batch(self.batch_size,drop_remainder=True)
-        else:
-            if feature_data:
-                self.train_data  = tf.data.Dataset.zip((self.train_data,feature_data)).batch(self.batch_size)
             else:
                 self.train_data  = self.train_data.batch(self.batch_size)
-        
         for cur_epoch in range(self.cls.cur_epoch_tensor.numpy(), self.config.cls_num_epochs + 1, 1):
             if feature_data:
-                for (img,img_label), (features,features_label) in self.train_data:
+                if self.config.update_feature_by_epoch:
+                    feature_idx = np.random.choice(range(len(feature_data)), size=self.train_data_num, replace=True)
+                    feature_dataset = copy.deepcopy(np.array(feature_data, dtype=object)[feature_idx])
+                    feature, labels = zip(*feature_dataset)
+                    feature_dataset = tf.data.Dataset.from_tensor_slices(
+                        (np.array(feature), np.array(labels))).shuffle(len(labels))
+                else:
+                    feature_dataset = feature_data
+                if len(self.train_data) >  self.batch_size:
+                    train_data  = tf.data.Dataset.zip((self.train_data,feature_dataset)).batch(self.batch_size,drop_remainder=True)
+                else:
+                    train_data  = tf.data.Dataset.zip((self.train_data,feature_dataset)).batch(self.batch_size)
+                for (img,img_label), (features,features_label) in train_data:
                     self.train_cls_step(img, img_label, features, features_label)
             else:
                 for x, y in self.train_data:

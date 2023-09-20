@@ -56,19 +56,20 @@ def create_feature_dataset(config, client_data, cls):
                 :num_feature_keep
             ] 
         feature_dataset = np.array(feature_dataset, dtype=object)[indices]
-    #Convert the number of initial client feature to be the same as client_data
-    if config.feature_match_train_data:
-        feature_idx = np.random.choice(range(len(feature_dataset)), size=client_train_data_num, replace=True)
-        feature_dataset = np.array(feature_dataset, dtype=object)[feature_idx]
-    else:
-        train_data_idx = np.random.choice(range(len(train_data)), size=len(feature_dataset), replace=True)
-        train_data = np.array(train_data, dtype=object)[train_data_idx]
-    client_data = (train_data, test_data)
-    feature, labels = zip(*feature_dataset)
-    print("after feature_len",len(labels))
-    print("after train_data",len(labels))
-    feature_dataset = tf.data.Dataset.from_tensor_slices(
-            (np.array(feature), np.array(labels))).shuffle(len(labels))
+    if not config.update_feature_by_epoch:
+        #Convert the number of initial client feature to be the same as client_data
+        if config.feature_match_train_data:
+            feature_idx = np.random.choice(range(len(feature_dataset)), size=client_train_data_num, replace=True)
+            feature_dataset = np.array(feature_dataset, dtype=object)[feature_idx]
+        else:
+            train_data_idx = np.random.choice(range(len(train_data)), size=len(feature_dataset), replace=True)
+            train_data = np.array(train_data, dtype=object)[train_data_idx]
+        client_data = (train_data, test_data)
+        feature, labels = zip(*feature_dataset)
+        print("after feature_len",len(labels))
+        print("after train_data",len(labels))
+        feature_dataset = tf.data.Dataset.from_tensor_slices(
+                (np.array(feature), np.array(labels))).shuffle(len(labels))
     return feature_dataset, client_data, cls
 
 def generate_initial_feature_center(config, y):
@@ -293,7 +294,7 @@ if __name__ == '__main__':
     parser.add_argument("--use_dirichlet_split_data", type=int, default=1)  #use 0 means False, 1 means True
     parser.add_argument("--use_same_kernel_initializer", type=int, default=1)
     parser.add_argument("--feature_match_train_data", type=int, default=1)  #1 means set the length of feature to be the same as the length of train data, 0 reverse
-
+    parser.add_argument("--update_feature_by_epoch", type=int, default=0)
     parser.add_argument("--cls_num_epochs", type=int, default=20)
 
     parser.add_argument("--original_cls_loss_weight_list", type=float, nargs='+', default=[1.0])
@@ -325,6 +326,7 @@ if __name__ == '__main__':
     args.initial_client = bool(args.initial_client)
     args.use_initial_model_weight = bool(args.use_initial_model_weight)
     args.use_dirichlet_split_data = bool(args.use_dirichlet_split_data)
+    args.update_feature_by_epoch = bool(args.update_feature_by_epoch)
     print("client:", args.clients_name)
     print("Whether initial_client:", args.initial_client)
     print("features_central_version_list:", args.features_central_version_list)
