@@ -21,13 +21,17 @@ def concatenate_feature_labels(config, tail_path, cls):
             cls.load_weights(tf.train.latest_checkpoint(checkpoint_dir))
             weight_object.append(copy.deepcopy(cls.weights))
         if index:
-            tmp_feature = np.load(f"{path}/real_features.npy",allow_pickle=True)
-            tmp_labels = np.load(f"{path}/features_label.npy",allow_pickle=True)
+            tmp_feature = np.load(f"{path}/save/real_train_features.npy",allow_pickle=True)
+            if config.feature_type == 'fake':
+                tmp_feature = np.load(f"/Users/yangingdai/Downloads/GAN_Templtate/tmp/{client_name}/{config.fake_features_version_list[index]}/fake_features.npy",allow_pickle=True)
+            tmp_labels = np.load(f"{path}/save/train_y.npy",allow_pickle=True)
             feature = np.concatenate((feature, tmp_feature),axis=0)
             labels = np.concatenate((labels, tmp_labels),axis=0)
-        else:
-            feature = np.load(f"{path}/real_features.npy",allow_pickle=True)
-            labels = np.load(f"{path}/features_label.npy",allow_pickle=True)
+        else:   #when index == 0 initial feature and labels
+            feature = np.load(f"{path}/save/real_train_features.npy",allow_pickle=True)
+            if config.feature_type == 'fake':
+                feature = np.load(f"/Users/yangingdai/Downloads/GAN_Templtate/tmp/{client_name}/{config.fake_features_version_list[index]}/fake_features.npy",allow_pickle=True)
+            labels = np.load(f"{path}/save/train_y.npy",allow_pickle=True)
     if config.use_initial_model_weight and data_amts > 1:
         w_avg = copy.deepcopy(weight_object[0])
         for index in range(len(w_avg)):
@@ -278,6 +282,13 @@ if __name__ == '__main__':
     )
     parser.add_argument("--features_central_client_name_list", type=str, nargs='+', default=["clients_1"])  #use which version as initial client( only for initial_client==0)
     parser.add_argument("--features_central_version_list", type=str,nargs='+',  default=["0"])  #use which version as initial client( only for initial_client==0)
+    parser.add_argument(
+        "--feature_type",
+        type=str,
+        help="choose to usereal or fake feature",
+        default="real",
+    )
+    parser.add_argument("--fake_features_version_list", type=str,nargs='+',  default=["0"])  #use which version as initial client( only for initial_client==0)
     parser.add_argument("--use_initial_model_weight", type=int, default=0)  #use which version as initial client( only for initial_client==0)
     parser.add_argument("--use_assigned_epoch_feature", type=int, default=0)  #use 0 means False==> use feature in best local acc( only for initial_client==0)
     parser.add_argument("--use_dirichlet_split_data", type=int, default=1)  #use 0 means False, 1 means True
