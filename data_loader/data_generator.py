@@ -92,36 +92,48 @@ class DataGenerator:
         else:
             self.dataset_train = list(zip(self.input, self.y))
             self.data_test = list(zip(self.test_x, self.test_y))
-            if self.config.sample_ratio < 1:
-                num_samples_keep = int(len(self.dataset_train) * self.config.sample_ratio)
-                indices = np.random.permutation(len(self.dataset_train))[
-                    :num_samples_keep
-                ]
-                self.dataset_train = np.array(self.dataset_train, dtype=object)[indices]
-            x, targets = zip(*self.dataset_train)
-            new_train_data = pd.concat([pd.DataFrame(x), pd.DataFrame(targets,columns=['class'])], axis=1)
-            print(new_train_data.shape)
-            user_train_data = []
-            timestamp_range = int(35/config.num_clients)
-            print("timestamp_range: ",timestamp_range)
-            print(config.clients_name)
-            print("---------")
-            for index, timestamp in enumerate(range(1,35,timestamp_range)):
-                print("client_", index+1," timestamp: [",timestamp,"->",timestamp+timestamp_range,")")
-                client_data = new_train_data[(new_train_data[0] >= float(timestamp)) & (new_train_data[0] < float(timestamp)+timestamp_range)]
-                client_input = np.array(client_data.drop(["class"],axis=1)).astype('float32')
-                client_y = np.array(client_data["class"]).astype('float32')
-                for k,v in client_data.groupby("class"):
-                    print(k,": ",v.shape)
-                client_data = list(zip(client_input, client_y))
-                user_train_data.append(client_data)
-            self.data_test = list(zip(self.test_x, self.test_y))
-            self.client_test_size = len(self.data_test) // config.num_clients
-            user_test_data = [self.data_test[test_index:test_index+ self.client_test_size] for test_index in range(0, self.client_test_size*self.config.num_clients, self.client_test_size)]
-            dataset = list(zip(user_train_data, user_test_data))
-            client_names = ['{}_{}'.format('clients', i+1) for i in range(self.config.num_clients)]
+            if config.use_dirichlet_split_data:
+                self.clients = self.split_data_dirichlet()
+            else:
+                self.clients = self.create_clients()
 
-            self.clients = {client_names[i] : dataset[i] for i in range(len(client_names))}
+            # if self.config.sample_ratio < 1:
+            #     num_samples_keep = int(len(self.dataset_train) * self.config.sample_ratio)
+            #     indices = np.random.permutation(len(self.dataset_train))[
+            #         :num_samples_keep
+            #     ]
+            #     self.dataset_train = np.array(self.dataset_train, dtype=object)[indices]
+            # x, targets = zip(*self.dataset_train)
+            # new_train_data = pd.concat([pd.DataFrame(x), pd.DataFrame(targets,columns=['class'])], axis=1)
+            # print(new_train_data.shape)
+            # user_train_data = []
+            # timestamp_range = int(35/config.num_clients)
+            # print("timestamp_range: ",timestamp_range)
+            # print(config.clients_name)
+            # print("---------")
+            # for index, timestamp in enumerate(range(1,35,timestamp_range)):
+            #     print("client_", index+1," timestamp: [",timestamp,"->",timestamp+timestamp_range,")")
+            #     client_data = new_train_data[(new_train_data[0] >= float(timestamp)) & (new_train_data[0] < float(timestamp)+timestamp_range)]
+            #     client_input = np.array(client_data.drop(["class"],axis=1)).astype('float32')
+            #     client_y = np.array(client_data["class"]).astype('float32')
+            #     tmp = []
+            #     for k,v in client_data.groupby("class"):
+            #         print(k,": ",v.shape)
+            #         tmp.append(v.shape[0])
+            #     print("rate:", tmp[1]/tmp[0])
+            #     client_data = list(zip(client_input, client_y))
+            #     user_train_data.append(client_data)
+
+            # self.client_test_size = len(self.data_test) // config.num_clients
+            # user_test_data = [self.data_test[test_index:test_index+ self.client_test_size] for test_index in range(0, self.client_test_size*self.config.num_clients, self.client_test_size)]
+            
+            # self.data_test = list(zip(self.test_x, self.test_y))
+            # self.client_test_size = len(self.data_test) // config.num_clients
+            # user_test_data = [self.data_test[test_index:test_index+ self.client_test_size] for test_index in range(0, self.client_test_size*self.config.num_clients, self.client_test_size)]
+            # dataset = list(zip(user_train_data, user_test_data))
+            # client_names = ['{}_{}'.format('clients', i+1) for i in range(self.config.num_clients)]
+
+            # self.clients = {client_names[i] : dataset[i] for i in range(len(client_names))}
         
     def next_batch(self, batch_size):
         idx = np.random.choice(len(self.y), batch_size)
