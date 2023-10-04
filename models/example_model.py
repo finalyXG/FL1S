@@ -205,7 +205,7 @@ class C_Generator(BaseModel):
         self.dense_1 = Dense(config.generator_dense1_dim, activation=tf.nn.relu)
         self.dense_2 = Dense(config.generator_dense2_dim, activation=tf.nn.relu)
         self.dense_3 = Dense(config.generator_dense3_dim, activation=tf.nn.relu)
-        self.dense_4 = Dense(config.latent_dim)
+        self.dense_4 = Dense(config.feature_dim)
 
     def call(self, inputs):
         x = self.dense_1(inputs)
@@ -237,7 +237,7 @@ class AC_Generator(BaseModel):
         self.dense_1 = Dense(32, activation=tf.nn.relu)
         self.dense_2 = Dense(64, activation=tf.nn.relu)
         self.dense_3 = Dense(128, activation=tf.nn.relu)
-        self.dense_4 = Dense(config.latent_dim)
+        self.dense_4 = Dense(config.feature_dim)
     def call(self, inputs):
         x = self.dense_1(inputs)
         x = self.dense_2(x)

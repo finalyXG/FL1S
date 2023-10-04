@@ -73,11 +73,11 @@ def create_feature_dataset(config, client_data, cls):
     return feature_dataset, client_data, cls
 
 def generate_initial_feature_center(config, y):
-    initial_feature_center = [tf.random.normal([config.latent_dim, 1])]
+    initial_feature_center = [tf.random.normal([config.feature_dim, 1])]
     for _ in range(config.num_classes-1):
         while True:
             flag = 1
-            tmp_feature = tf.random.normal([config.latent_dim, 1])
+            tmp_feature = tf.random.normal([config.feature_dim, 1])
             for feature in initial_feature_center:
                 feature = tf.reshape(feature, [-1,])
                 tmp_feature = tf.reshape(tmp_feature, [-1,])
@@ -299,6 +299,7 @@ if __name__ == '__main__':
     parser.add_argument("--discriminator_extra_steps", type=int, default=3)
     parser.add_argument("--num_examples_to_generate", type=int, default=16)
     parser.add_argument("--latent_dim", type=int, default=16)
+    parser.add_argument("--feature_dim", type=int, default=128)
     parser.add_argument("--max_to_keep", type=int, default=5)
 
     parser.add_argument("--num_clients", type=int, default=2)

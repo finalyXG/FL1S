@@ -57,13 +57,13 @@ def show_features_distribution(config, client_name,version_num):
     plt.close()
 
 def generate_initial_feature_center(config):
-    config.latent_dim = 128
+    config.feature_dim = 128
     config.initial_feature_center_cosine_threshold = 0.5
-    initial_feature_center = [tf.random.normal([config.latent_dim, 1])]
+    initial_feature_center = [tf.random.normal([config.feature_dim, 1])]
     for _ in range(config.num_classes-1):
         while True:
             flag = 1
-            tmp_feature = tf.random.normal([config.latent_dim, 1])
+            tmp_feature = tf.random.normal([config.feature_dim, 1])
             for feature in initial_feature_center:
                 feature = tf.reshape(feature, [-1,])
                 tmp_feature = tf.reshape(tmp_feature, [-1,])
@@ -224,7 +224,7 @@ if __name__ == '__main__':
     )
     parser.add_argument("--features_ouput_layer", help="The index of features output Dense layer",type=int, default=-2)
     parser.add_argument("--image_size", type=int, default=28)
-    parser.add_argument("--latent_dim", type=int, default=16)
+    parser.add_argument("--feature_dim", type=int, default=16)
     parser.add_argument("--max_to_keep", type=int, default=5)
     parser.add_argument("--num_classes", type=int, default=10)
 
