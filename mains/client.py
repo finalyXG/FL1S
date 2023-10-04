@@ -66,8 +66,6 @@ def create_feature_dataset(config, client_data, cls):
             train_data = np.array(train_data, dtype=object)[train_data_idx]
         client_data = (train_data, test_data)
         feature, labels = zip(*feature_dataset)
-        print("after feature_len",len(labels))
-        print("after train_data",len(labels))
         feature_dataset = tf.data.Dataset.from_tensor_slices(
                 (np.array(feature), np.array(labels))).shuffle(len(labels))
     return feature_dataset, client_data, cls
@@ -198,7 +196,10 @@ def clients_main(config):
 
                         feature_data = None
                         initial_feature_center = None
-                        print("feture dimension", config.latent_dim)
+                        print("feture dimension", config.feature_dim)
+                        if feat_loss_weight == float(0):
+                            config.feature_match_train_data = 1
+                            print("feature_match_train_data:", config.feature_match_train_data)
                         if not config.initial_client:   # get initial_client's features
                             feature_data, client_data, cls = create_feature_dataset(config, client_data, cls)
                         elif config.whether_initial_feature_center:
@@ -209,7 +210,7 @@ def clients_main(config):
                         trainer = Trainer(config.clients_name, version_num, client_data, all_test_x, all_test_y, initial_feature_center, pre_features_central, cls, discriminator, generator,config,hparams)
                         cls.init_cur_epoch()
                         cur_features_central, real_features, best_global_acc, best_local_acc = trainer.train_cls(worksheet, feature_data, suffix)
-                        features_label = trainer.get_features_label()
+                        # features_label = trainer.get_features_label()
                             ### GAN
                             # print("after train cls")
                             # disc_test_loss, gen_test_loss, fake_features = trainer.trainGAN()
@@ -217,8 +218,8 @@ def clients_main(config):
                             # tf.summary.scalar("best_local_acc", best_local_acc, step=1)
                         with open(f"tmp/{config.clients_name}/{version_num}{suffix}/features_central.pkl","wb") as fp:
                             pickle.dump(cur_features_central, fp)
-                        np.save(f"tmp/{config.clients_name}/{version_num}{suffix}/real_features",real_features)
-                        np.save(f"tmp/{config.clients_name}/{version_num}{suffix}/features_label",features_label)
+                        # np.save(f"tmp/{config.clients_name}/{version_num}{suffix}/real_features",real_features)
+                        # np.save(f"tmp/{config.clients_name}/{version_num}{suffix}/features_label",features_label)
                         version_num += 1
                 
     workbook.save(f'./tmp/{config.clients_name}/metrics_record.xlsx')

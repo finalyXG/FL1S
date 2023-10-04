@@ -401,7 +401,6 @@ class Trainer:
             global_worksheet.cell(row=int(self.version_num)+2, column=col_num+1, value = col_value)
         client_num = int(self.client_name.split("_")[-1])
         global_worksheet.cell(row=int(self.version_num)+2, column=client_num+12, value = str(round(float(best_global_acc),4)*100)+"%")
-        global_workbook.save(f'./tmp/global_metrics_record.xlsx')
         
         if self.config.dataset == "elliptic":
             best_global_f1 = max(self.global_cls_f1_list)
@@ -410,6 +409,7 @@ class Trainer:
             precision = self.global_cls_precision_list[max_global_f1_index]
             print(f"best_global_f1_index: {max_global_f1_index}, best_global_f1: {best_global_f1} recall: {recall}, precision: {precision}",)
             global_worksheet.cell(row=int(self.version_num)+2, column=client_num+19, value = str(round(float(best_global_f1),4)*100)+"%")
+        global_workbook.save(f'./tmp/global_metrics_record.xlsx')
         
         #load model in best local test acc
         # checkpoint.restore(tf.train.latest_checkpoint(checkpoint_dir+'local')) 
