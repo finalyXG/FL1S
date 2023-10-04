@@ -98,9 +98,13 @@ class Classifier(BaseModel):
         self.feature_layers = [self.cov_1, self.pool_1, self.cov_2, self.pool_2, self.flatten,self.dense_1,self.dense_2]
 
     def layer_build(self, kernel_initializer):
-        self.cov_1 = Conv2D(32, kernel_size=(5, 5), input_shape=(self.config.image_size,self.config.image_size,), kernel_initializer=kernel_initializer)
+        # self.cov_1 = Conv2D(32, kernel_size=(5, 5), input_shape=(self.config.image_size,self.config.image_size,), kernel_initializer=kernel_initializer)
+        # self.pool_1 = MaxPooling2D((2, 2))
+        # self.cov_2 = Conv2D(64, kernel_size=(5, 5), kernel_initializer=kernel_initializer)
+        #8->4; 16->8
+        self.cov_1 = Conv2D(16, kernel_size=(5, 5), input_shape=(self.config.image_size,self.config.image_size,), kernel_initializer=kernel_initializer)
         self.pool_1 = MaxPooling2D((2, 2))
-        self.cov_2 = Conv2D(64, kernel_size=(5, 5), kernel_initializer=kernel_initializer)
+        self.cov_2 = Conv2D(8, kernel_size=(5, 5), kernel_initializer=kernel_initializer)
         self.pool_2 = MaxPooling2D((2, 2))
         self.flatten = Flatten()
         self.dense_1 = Dense(512, activation='relu', kernel_initializer=kernel_initializer)
