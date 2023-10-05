@@ -37,10 +37,10 @@ class Trainer:
         self.train_x,self.train_y = zip(*train_data)
         self.train_data_num = len(self.train_y)
         self.test_x,self.test_y = zip(*test_data)
-        class_rate = self.train_y.count(1)/self.train_y.count(0)
+        class_rate = self.train_y.count(0)/self.train_y.count(1)
         print("class_rate",class_rate)
         self.config.importance_rate = (config.train_data_importance_rate * class_rate).astype('float32')
-
+        print("importance_rate",self.config.importance_rate)
         self.train_x,self.train_y = np.array(self.train_x),np.array(self.train_y)
         self.test_x,self.test_y = np.array(self.test_x),np.array(self.test_y)
         ## show the distribution of label

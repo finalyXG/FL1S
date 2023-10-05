@@ -69,10 +69,10 @@ class DataGenerator:
             train_data = df[df['Time step'] < 35]
             test_data = df[df['Time step'] >= 35]
             neg, pos = np.bincount(train_data['class'])
-            config.train_data_importance_rate = (7/3)/(pos/neg)
+            config.train_data_importance_rate = (7/3)/(neg/pos)
             config.elliptic_initial_bias = np.log([pos/neg])
-            self.input, self.y = np.array(train_data.drop(["class","txId"],axis=1)).astype('float32'), np.array(train_data["class"]).astype('float32')
-            self.test_x, self.test_y = np.array(test_data.drop(["class","txId"],axis=1)).astype('float32'), np.array(test_data["class"]).astype('float32')
+            self.input, self.y = np.array(train_data.drop(["class","txId",'Time step'],axis=1)).astype('float32'), np.array(train_data["class"]).astype('float32')
+            self.test_x, self.test_y = np.array(test_data.drop(["class","txId",'Time step'],axis=1)).astype('float32'), np.array(test_data["class"]).astype('float32')
             config.input_feature_size = self.input.shape[-1]
         else:
             raise NotImplementedError(
