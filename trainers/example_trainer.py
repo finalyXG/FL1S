@@ -107,6 +107,10 @@ class Trainer:
             self.cls_test_accuracy = tf.keras.metrics.BinaryAccuracy(name='cls_test_accuracy')
             self.cls_global_test_accuracy = tf.keras.metrics.BinaryAccuracy(name='cls_global_test_accuracy')
 
+            self.cls_train_elliptic_recall = tf.keras.metrics.Recall(name='elliptic_train_recall')
+            self.cls_train_elliptic_precision = tf.keras.metrics.Precision(name='elliptic_train_precision')
+            self.cls_train_elliptic_f1 = tf.keras.metrics.F1Score(threshold=0.5, name='elliptic_train_f1score')
+
         self.cls_test_elliptic_recall = tf.keras.metrics.Recall(name='elliptic_test_recall')
         self.cls_test_elliptic_precision = tf.keras.metrics.Precision(name='elliptic_test_precision')
         self.cls_test_elliptic_f1 = tf.keras.metrics.F1Score(threshold=0.5, name='elliptic_test_f1score')
@@ -151,6 +155,10 @@ class Trainer:
                 loss = self.img_loss_fn_cls(labels, predictions) * self.original_cls_loss_weight
             else:
                 loss = tf.nn.weighted_cross_entropy_with_logits(labels=y_true, logits=predictions, pos_weight=self.weights) * self.original_cls_loss_weight
+                self.cls_train_elliptic_f1(y_true, predictions)
+                self.cls_train_elliptic_precision(y_true, predictions)
+                self.cls_train_elliptic_recall(y_true, predictions)
+
             self.cls_train_classify_loss(loss)
             distance_loss = 0.0
             feature_loss = 0.0
@@ -262,6 +270,7 @@ class Trainer:
                 tf.summary.scalar('cls_distance_loss_'+self.client_name, self.cls_train_distance_loss.result(), step=cur_epoch) 
                 tf.summary.scalar('cls_feature_loss_'+self.client_name, self.cls_train_feature_loss.result(), step=cur_epoch) 
                 tf.summary.scalar('cls_classify_loss_'+self.client_name, self.cls_train_classify_loss.result(), step=cur_epoch) 
+                tf.summary.scalar('cls_f1_'+self.client_name, self.cls_train_elliptic_f1.result()[0], step=cur_epoch) 
 
             self.cls.cur_epoch_tensor.assign_add(1)
 
@@ -340,10 +349,10 @@ class Trainer:
                 self.global_cls_f1_list.append(self.cls_global_test_elliptic_f1.result())
                 self.global_cls_recall_list.append(self.cls_global_test_elliptic_recall.result())
                 self.global_cls_precision_list.append(self.cls_global_test_elliptic_precision.result())
-                template = 'Global Test Recall: {}, Global Test Precision: {}, Global Test F1: {}'
-                print (template.format(#self.cls_test_elliptic_recall.result()*100,   #Test Recall: {}, Test Precision: {}, Test F1: {}, 
-                                    #self.cls_test_elliptic_precision.result()*100,
-                                    #self.cls_test_elliptic_f1.result()*100,
+                template = 'Train Recall: {}, Train Precision: {}, Train F1: {}, Global Test Recall: {}, Global Test Precision: {}, Global Test F1: {}'
+                print (template.format(self.cls_train_elliptic_recall.result()*100,   #Test Recall: {}, Test Precision: {}, Test F1: {}, 
+                                    self.cls_train_elliptic_precision.result()*100,
+                                    self.cls_train_elliptic_f1.result()*100,
                                     self.cls_global_test_elliptic_recall.result()*100,
                                     self.cls_global_test_elliptic_precision.result()*100,
                                     self.cls_global_test_elliptic_f1.result()*100,))
@@ -363,6 +372,9 @@ class Trainer:
             self.cls_global_test_elliptic_f1.reset_states()
             self.cls_global_test_elliptic_precision.reset_states()
             self.cls_global_test_elliptic_recall.reset_states()
+            self.cls_train_elliptic_recall.reset_states()
+            self.cls_train_elliptic_f1.reset_states()
+            self.cls_train_elliptic_precision.reset_states()
 
         best_global_acc = max(self.global_cls_acc_list)
         best_local_acc = max(self.local_cls_acc_list)
