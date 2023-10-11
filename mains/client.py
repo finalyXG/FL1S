@@ -208,7 +208,9 @@ def clients_main(config):
                             config.feature_match_train_data = 1
                             print("feature_match_train_data:", config.feature_match_train_data)
                         if not config.initial_client:   # get initial_client's features
-                            feature_data, client_data, cls = create_feature_dataset(config, client_data, cls)
+                            if config.use_initial_model_weight:
+                                cls = model_avg_init(config, cls)
+                            feature_data, client_data = create_feature_dataset(config, client_data)
                         elif config.whether_initial_feature_center:
                             initial_feature_center = generate_initial_feature_center(config, all_test_y)
                         generator = AC_Generator(config)
