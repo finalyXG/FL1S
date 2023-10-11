@@ -153,7 +153,7 @@ class ClassifierElliptic(BaseModel):
             else:
                 print("for other client use random_normal")
                 self.layer_build("random_normal")
-        self.feature_layers = [self.dense_1,self.dense_2]#,self.dense_4,self.dense_5,self.dense_6,self.dense_3,self.dense_7
+        self.feature_layers = [self.dense_1,self.dense_2,self.dense_3,self.dense_4]#,self.dense_4,self.dense_5,self.dense_6,self.dense_3,self.dense_7
 
     # def layer_build(self, kernel_initializer):
     #     output_bias = tf.keras.initializers.Constant(self.config.elliptic_initial_bias)
@@ -177,11 +177,17 @@ class ClassifierElliptic(BaseModel):
     def layer_build(self, kernel_initializer):
         output_bias = tf.keras.initializers.Constant(self.config.elliptic_initial_bias)
         self.dense_1 = Dense(50, activation=tf.nn.leaky_relu , input_shape=(self.config.input_feature_size,), kernel_initializer=kernel_initializer)
-        self.dense_2 = Dense(1, activation='sigmoid', kernel_initializer=kernel_initializer)#, bias_initializer=output_bias
+        self.dense_2 = Dense(50, activation=tf.nn.leaky_relu , input_shape=(self.config.input_feature_size,), kernel_initializer=kernel_initializer)
+        self.dense_3 = Dense(50, activation=tf.nn.leaky_relu , input_shape=(self.config.input_feature_size,), kernel_initializer=kernel_initializer)
+        # self.dense_4 = Dense(50, activation=tf.nn.leaky_relu , input_shape=(self.config.input_feature_size,), kernel_initializer=kernel_initializer)
+        self.dense_4 = Dense(1, activation='sigmoid', kernel_initializer=kernel_initializer)#, bias_initializer=output_bias
 
     def call(self, x):
         x = self.dense_1(x)
-        return self.dense_2(x)
+        x = self.dense_2(x)
+        x = self.dense_3(x)
+        # x = self.dense_4(x)
+        return self.dense_4(x)
     
     def call_2(self, layer_num, x):
         #for other client
