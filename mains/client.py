@@ -11,27 +11,30 @@ import random
 import openpyxl
 import copy
 
-def concatenate_feature_labels(config, tail_path, cls):
-    weight_object = []
-    data_amts = len(config.features_central_client_name_list)
+def concatenate_feature_labels(config, tail_path):
     for index, (client_name, client_version) in enumerate(zip(config.features_central_client_name_list, config.features_central_version_list)):
         path = f"./tmp/{client_name}/{client_version}/{tail_path}"
-        if config.use_initial_model_weight:
-            checkpoint_dir = f'./tmp/{client_name}/{client_version}/cls_training_checkpoints/local/'
-            cls.load_weights(tf.train.latest_checkpoint(checkpoint_dir))
-            weight_object.append(copy.deepcopy(cls.weights))
         if index:
-            tmp_feature = np.load(f"{path}/save/real_train_features.npy",allow_pickle=True)
+            tmp_feature = np.load(f"{path}/real_train_features.npy",allow_pickle=True)
             if config.feature_type == 'fake':
                 tmp_feature = np.load(f"/Users/yangingdai/Downloads/GAN_Templtate/tmp/{client_name}/{config.fake_features_version_list[index]}/fake_features.npy",allow_pickle=True)
-            tmp_labels = np.load(f"{path}/save/train_y.npy",allow_pickle=True)
+            tmp_labels = np.load(f"{path}/train_y.npy",allow_pickle=True)
             feature = np.concatenate((feature, tmp_feature),axis=0)
             labels = np.concatenate((labels, tmp_labels),axis=0)
         else:   #when index == 0 initial feature and labels
-            feature = np.load(f"{path}/save/real_train_features.npy",allow_pickle=True)
+            feature = np.load(f"{path}/real_train_features.npy",allow_pickle=True)
             if config.feature_type == 'fake':
                 feature = np.load(f"/Users/yangingdai/Downloads/GAN_Templtate/tmp/{client_name}/{config.fake_features_version_list[index]}/fake_features.npy",allow_pickle=True)
-            labels = np.load(f"{path}/save/train_y.npy",allow_pickle=True)
+            labels = np.load(f"{path}/train_y.npy",allow_pickle=True)
+    return feature, labels
+
+def model_avg_init(config, cls):
+    weight_object = []
+    data_amts = len(config.features_central_client_name_list)
+    for index, (client_name, client_version) in enumerate(zip(config.features_central_client_name_list, config.features_central_version_list)):
+        checkpoint_dir = f'./tmp/{client_name}/{client_version}/cls_training_checkpoints/local/'
+        cls.load_weights(tf.train.latest_checkpoint(checkpoint_dir)).expect_partial()
+        weight_object.append(copy.deepcopy(cls.weights))
     if config.use_initial_model_weight and data_amts > 1:
         w_avg = copy.deepcopy(weight_object[0])
         for index in range(len(w_avg)):
@@ -39,7 +42,7 @@ def concatenate_feature_labels(config, tail_path, cls):
             for i in range(1, data_amts):
                 w_avg[index] += weight_object[i][index]/data_amts
         cls.set_weights(copy.deepcopy(w_avg))
-    return feature, labels, cls
+    return cls
 
 def create_feature_dataset(config, client_data, cls):
     '''
