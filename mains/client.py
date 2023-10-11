@@ -80,7 +80,7 @@ def create_feature_dataset(config, client_data):
         if not config.update_feature_by_epoch:
             feature, labels = zip(*feature_dataset)
             feature_dataset = tf.data.Dataset.from_tensor_slices(
-                    (np.array(feature), np.array(labels))).shuffle(config.total_features_num)
+                    (np.array(feature), np.array(labels)))#.shuffle(config.total_features_num)
         dataset_dict[layer_num] = feature_dataset
     if not config.update_feature_by_epoch and not config.feature_match_train_data:
         train_data_idx = np.random.choice(range(client_train_data_num), size=config.total_features_num, replace=True)

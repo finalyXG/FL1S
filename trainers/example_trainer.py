@@ -278,14 +278,14 @@ class Trainer:
                         v = copy.deepcopy(np.array(v, dtype=object)[feature_idx])
                         feature, labels = zip(*v)
                         v = tf.data.Dataset.from_tensor_slices(
-                            (np.array(feature), np.array(labels))).shuffle(len(labels))
+                            (np.array(feature), np.array(labels)))#.shuffle(len(labels))
                         feature_dataset[k] = v
                     all_dataset = list(feature_dataset.values())
                     all_dataset.append(self.train_data)
                 if len(self.train_data) >  self.batch_size:
-                    all_train_data  = tf.data.Dataset.zip(tuple(all_dataset)).batch(self.batch_size,drop_remainder=True)
+                    all_train_data  = tf.data.Dataset.zip(tuple(all_dataset)).shuffle(len(self.train_data)).batch(self.batch_size,drop_remainder=True)
                 else:
-                    all_train_data  = tf.data.Dataset.zip(tuple(all_dataset)).batch(self.batch_size)
+                    all_train_data  = tf.data.Dataset.zip(tuple(all_dataset)).shuffle(len(self.train_data)).batch(self.batch_size)
                 for batch_data in all_train_data:
                     self.train_cls_step(batch_data, feature_data.keys())
             else:
