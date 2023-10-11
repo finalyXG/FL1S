@@ -44,56 +44,72 @@ def model_avg_init(config, cls):
         cls.set_weights(copy.deepcopy(w_avg))
     return cls
 
-def create_feature_dataset(config, client_data, cls):
+def create_feature_dataset(config, client_data):
     '''
     generate initial client feature to dataset
     '''
-    if config.use_assigned_epoch_feature:
-        tail_path = f"assigned_epoch/{config.use_assigned_epoch_feature}/"
-    else:
-        tail_path = f""
-    feature, labels, cls = concatenate_feature_labels(config, tail_path, cls)
-
+    # if config.use_assigned_epoch_feature:
+    #     tail_path = f"assigned_epoch/{config.use_assigned_epoch_feature}/"
+    # else:
+    #     tail_path = f""
+    dataset_dict = {}
+    indices, feature_idx = None, None
     (train_data, test_data) = client_data
     client_train_data_num = len(train_data)
-    feature_dataset = list(zip(feature, labels))
-    if config.take_feature_ratio < 1:
-        num_feature_keep = int(len(labels) * config.take_feature_ratio)
-        indices = np.random.permutation(len(feature_dataset))[
-                :num_feature_keep
-            ] 
-        feature_dataset = np.array(feature_dataset, dtype=object)[indices]
-    if not config.update_feature_by_epoch:
-        #Convert the number of initial client feature to be the same as client_data
-        if config.feature_match_train_data:
-            feature_idx = np.random.choice(range(len(feature_dataset)), size=client_train_data_num, replace=True)
-            feature_dataset = np.array(feature_dataset, dtype=object)[feature_idx]
+    for layer_num in config.features_ouput_layer_list:
+        if config.use_assigned_epoch_feature:
+            tail_path = f"assigned_epoch/{config.use_assigned_epoch_feature}/{layer_num}_layer_output/"
         else:
-            train_data_idx = np.random.choice(range(len(train_data)), size=len(feature_dataset), replace=True)
-            train_data = np.array(train_data, dtype=object)[train_data_idx]
-        client_data = (train_data, test_data)
-        feature, labels = zip(*feature_dataset)
-        feature_dataset = tf.data.Dataset.from_tensor_slices(
-                (np.array(feature), np.array(labels))).shuffle(len(labels))
-    return feature_dataset, client_data, cls
+            tail_path = f"{layer_num}_layer_output/"
+        feature, labels = concatenate_feature_labels(config, tail_path)
+        config.total_features_num = len(labels)
+        feature_dataset = list(zip(feature, labels))
+        if config.take_feature_ratio < 1 and indices is None:
+            num_feature_keep = int(config.total_features_num * config.take_feature_ratio)
+            indices = np.random.permutation(config.total_features_num)[
+                    :num_feature_keep
+                ]
+        if indices:  #take_feature_ratio
+            feature_dataset = np.array(feature_dataset, dtype=object)[indices]
+        if not config.update_feature_by_epoch and config.feature_match_train_data and feature_idx is None:
+            #Convert the number of initial client feature to be the same as client_data
+            feature_idx = np.random.choice(range(config.total_features_num), size=client_train_data_num, replace=True)
+
+        if feature_idx:
+            feature_dataset = np.array(feature_dataset, dtype=object)[feature_idx]
+        if not config.update_feature_by_epoch:
+            feature, labels = zip(*feature_dataset)
+            feature_dataset = tf.data.Dataset.from_tensor_slices(
+                    (np.array(feature), np.array(labels))).shuffle(config.total_features_num)
+        dataset_dict[layer_num] = feature_dataset
+    if not config.update_feature_by_epoch and not config.feature_match_train_data:
+        train_data_idx = np.random.choice(range(client_train_data_num), size=config.total_features_num, replace=True)
+        train_data = np.array(train_data, dtype=object)[train_data_idx]
+    client_data = (train_data, test_data)
+    return dataset_dict, client_data
 
 def generate_initial_feature_center(config, y):
+    """
+    feature_center_dict[feature_layer_num][data_label]
+    """
     initial_feature_center = [tf.random.normal([config.feature_dim, 1])]
-    for _ in range(config.num_classes-1):
-        while True:
-            flag = 1
-            tmp_feature = tf.random.normal([config.feature_dim, 1])
-            for feature in initial_feature_center:
-                feature = tf.reshape(feature, [-1,])
-                tmp_feature = tf.reshape(tmp_feature, [-1,])
-                cos_sim = tf.tensordot(feature, tmp_feature,axes=1)/(tf.linalg.norm(feature)*tf.linalg.norm(tmp_feature)+0.001)
-                if cos_sim > config.initial_feature_center_cosine_threshold:
-                    flag = 0
+    feature_center_dict = {}
+    for layer_num in config.features_ouput_layer_list:
+        for _ in range(config.num_classes-1):
+            while True:
+                flag = 1
+                tmp_feature = tf.random.normal([config.feature_dim, 1])
+                for feature in initial_feature_center:
+                    feature = tf.reshape(feature, [-1,])
+                    tmp_feature = tf.reshape(tmp_feature, [-1,])
+                    cos_sim = tf.tensordot(feature, tmp_feature,axes=1)/(tf.linalg.norm(feature)*tf.linalg.norm(tmp_feature)+0.001)
+                    if cos_sim > config.initial_feature_center_cosine_threshold:
+                        flag = 0
+                        break
+                if flag == 1:
+                    initial_feature_center.append(tmp_feature)
                     break
-            if flag == 1:
-                initial_feature_center.append(tmp_feature)
-                break
-    feature_center_dict = {label: feature_center for label, feature_center in zip(set(y), initial_feature_center) }
+        feature_center_dict[layer_num] = {label: feature_center for label, feature_center in zip(set(y), initial_feature_center) }
     return feature_center_dict
 
 def clients_main(config):
@@ -101,20 +117,22 @@ def clients_main(config):
     suffix = ""
     pre_features_central = None
     if not config.initial_client:  
-        for client_name, client_version in zip(config.features_central_client_name_list, config.features_central_version_list):
-            suffix += f"_{client_name}_{client_version}" #indicate clients_name version features center
-            if config.use_assigned_epoch_feature:
-                path = f'tmp/{client_name}/{client_version}/assigned_epoch/{config.use_assigned_epoch_feature}/'
-            else:
-                path = f'tmp/{client_name}/{client_version}/'
-            with open(f'{path}/features_central.pkl','rb') as fp: 
-                features_central = pickle.load(fp) #load features_central pre-saved
-            if pre_features_central:
-                for k,v in pre_features_central.items():
-                    pre_features_central[k] = tf.stack([pre_features_central[k],features_central[k]])
-                    pre_features_central[k] = tf.reduce_mean(pre_features_central[k], axis=0) 
-            else:
-                pre_features_central = features_central
+        pre_features_central = {i:None for i in config.features_ouput_layer_list}
+        for layer_num in config.features_ouput_layer_list:
+            for client_name, client_version in zip(config.features_central_client_name_list, config.features_central_version_list):
+                suffix += f"_{client_name}_{client_version}" #indicate clients_name version features center
+                if config.use_assigned_epoch_feature:
+                    path = f'tmp/{client_name}/{client_version}/assigned_epoch/{config.use_assigned_epoch_feature}/{layer_num}_layer_output/'
+                else:
+                    path = f'tmp/{client_name}/{client_version}/{layer_num}_layer_output/'
+                with open(f'{path}/features_central.pkl','rb') as fp: 
+                    features_central = pickle.load(fp) #load features_central pre-saved
+                if pre_features_central[layer_num]:
+                    for k,v in pre_features_central[layer_num].items():
+                        pre_features_central[layer_num][k] = tf.stack([pre_features_central[layer_num][k],features_central[k]])
+                        pre_features_central[layer_num][k] = tf.reduce_mean(pre_features_central[layer_num][k], axis=0) 
+                else:
+                    pre_features_central[layer_num] = features_central
 
     if not os.path.exists(f"tmp/{config.clients_name}"):
         version_num = 0
@@ -225,8 +243,14 @@ def clients_main(config):
                             # disc_test_loss, gen_test_loss, fake_features = trainer.trainGAN()
                             # tf.summary.scalar("best_global_acc", best_global_acc, step=1)
                             # tf.summary.scalar("best_local_acc", best_local_acc, step=1)
-                        with open(f"tmp/{config.clients_name}/{version_num}{suffix}/features_central.pkl","wb") as fp:
-                            pickle.dump(cur_features_central, fp)
+
+                        # with open(f"tmp/{config.clients_name}/{version_num}{suffix}/features_central.pkl","wb") as fp:
+                        #     pickle.dump(cur_features_central, fp)
+
+                        for k,v in cur_features_central.items():
+                            os.makedirs(f"tmp/{config.clients_name}/{version_num}{suffix}/{k}_layer_output")
+                            with open(f"tmp/{config.clients_name}/{version_num}{suffix}/{k}_layer_output/features_central.pkl","wb") as fp:
+                                pickle.dump(v, fp)
                         # np.save(f"tmp/{config.clients_name}/{version_num}{suffix}/real_features",real_features)
                         # np.save(f"tmp/{config.clients_name}/{version_num}{suffix}/features_label",features_label)
                         version_num += 1
@@ -308,7 +332,7 @@ if __name__ == '__main__':
     parser.add_argument("--learning_rate_list", type=float, nargs='+', default=[0.001]) 
     parser.add_argument("--batch_size_list", type=int, nargs='+', default=[32]) 
 
-    parser.add_argument("--features_ouput_layer", help="The index of features output Dense layer",type=int, default=-2)
+    parser.add_argument("--features_ouput_layer_list", help="The index of features output Dense layer",nargs='+',type=int, default=[-2])
     parser.add_argument("--GAN_num_epochs", type=int, default=1)
     parser.add_argument("--test_feature_num", type=int, default=500)
     parser.add_argument("--test_sample_num", help="The number of real features and fake features in tsne img", type=int, default=500) 
@@ -341,7 +365,7 @@ if __name__ == '__main__':
         print("client_test_num:", args.client_test_num)
     print("cls_num_epochs:", args.cls_num_epochs)
     print("initial_client_ouput_feat_epoch:", args.initial_client_ouput_feat_epochs)
-    print("features_ouput_layer:",args.features_ouput_layer)
+    print("features_ouput_layer_list:",args.features_ouput_layer_list)
     print("use_dirichlet_split_data",args.use_dirichlet_split_data)
     if args.initial_client_ouput_feat_epochs[0] <= args.cls_num_epochs:
         clients_main(args)

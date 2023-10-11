@@ -9,15 +9,6 @@ import pickle
 import random
 
 def main(config):
-    # hparams_file = open('/hparams_record.txt', "r")
-    # print(hparams_file.readlines())
-    # config_dict = vars(config)
-    # for line in hparams_file.readlines():
-    #     line = line.strip()
-    #     k, v = line.split(": ")[0], line.split(": ")[1]
-
-    #     print("v type", type(v))
-    #     config_dict[k] = v
     data = DataGenerator(config)
     client_data = data.clients[config.clients_name]
 
@@ -32,18 +23,14 @@ def main(config):
     train_x,train_y = zip(*train_data)
     train_x,train_y = np.array(train_x),np.array(train_y)
 
-    test_x,test_y = zip(*test_data)
-    test_x,test_y = np.array(test_x),np.array(test_y)
-
     real_train_features = cls.get_features(train_x)
-    real_test_features = cls.get_features(test_x)
-    if not os.path.exists(f"{path}/save/"):
-        os.makedirs(f"{path}/save/")
-    np.save(f"{path}/save/real_train_features",real_train_features)
-    np.save(f"{path}/save/train_y",train_y)
-
-    np.save(f"{path}/save/real_test_features",real_test_features)
-    np.save(f"{path}/save/test_y",test_y)
+    # if not os.path.exists(f"{path}/save/"):
+    #     os.makedirs(f"{path}/save/")
+    # np.save(f"{path}/save/real_train_features",real_train_features)
+    # np.save(f"{path}/save/train_y",train_y)
+    for k,v in real_train_features.items():
+        np.save(f"{path}/{k}_layer_output/real_train_features",v)
+        np.save(f"{path}/{k}_layer_output/train_y",train_y)
     # pre_feature  = np.load(f"{path}/real_features.npy",allow_pickle=True)
     # pre_label  = np.load(f"{path}/features_label.npy",allow_pickle=True)
     # print("pre_feature",pre_feature[0][:3])
@@ -121,7 +108,7 @@ if __name__ == '__main__':
     parser.add_argument("--learning_rate_list", type=float, nargs='+', default=[0.001]) 
     parser.add_argument("--batch_size_list", type=int, nargs='+', default=[32]) 
 
-    parser.add_argument("--features_ouput_layer", help="The index of features output Dense layer",type=int, default=-2)
+    parser.add_argument("--features_ouput_layer_list", help="The index of features output Dense layer",type=int, nargs="+", default=[-2])
     parser.add_argument("--GAN_num_epochs", type=int, default=1)
     parser.add_argument("--test_feature_num", type=int, default=500)
     parser.add_argument("--test_sample_num", help="The number of real features and fake features in tsne img", type=int, default=500) 
@@ -154,7 +141,7 @@ if __name__ == '__main__':
         print("client_test_num:", args.client_test_num)
     print("cls_num_epochs:", args.cls_num_epochs)
     print("initial_client_ouput_feat_epoch:", args.initial_client_ouput_feat_epochs)
-    print("features_ouput_layer:",args.features_ouput_layer)
+    print("features_ouput_layer_list:",args.features_ouput_layer_list)
     print("use_dirichlet_split_data",args.use_dirichlet_split_data)
     if args.initial_client_ouput_feat_epochs[0] <= args.cls_num_epochs:
         main(args)

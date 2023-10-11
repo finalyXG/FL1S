@@ -146,34 +146,40 @@ class Trainer:
             self.init = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
         return self.init
 
-    # @tf.function   #means cancel eager mode --> able to convert tensor to array
-    def train_cls_step(self,images, labels, features=None, features_label=None):
+    # @tf.function   # #@tf.function -> cancel eager mode --> able to convert tensor to array
+    def train_cls_step(self,batch_data, layer_num_list = None):
+        if type(batch_data[0]) != tuple:
+            images, labels = batch_data
+        else:  #type(batch_data[0]) == tuple  means batch_data contains feature dataset
+            images, labels = batch_data[-1]  #last element in batch_data is client train_data
         with tf.GradientTape() as tape:
             predictions = self.cls(images, training=True)
             y_true = tf.expand_dims(labels, axis=1)
             if self.config.dataset != "elliptic":
-                loss = self.img_loss_fn_cls(labels, predictions) * self.original_cls_loss_weight
+                loss = self.img_loss_fn_cls(labels, predictions)
             else:
-                loss = tf.nn.weighted_cross_entropy_with_logits(labels=y_true, logits=predictions, pos_weight=self.weights) * self.original_cls_loss_weight
+                loss = tf.nn.weighted_cross_entropy_with_logits(labels=y_true, logits=predictions, pos_weight=self.weights)
                 self.cls_train_elliptic_f1(y_true, predictions)
                 self.cls_train_elliptic_precision(y_true, predictions)
                 self.cls_train_elliptic_recall(y_true, predictions)
 
             self.cls_train_classify_loss(loss)
+            loss = loss * self.original_cls_loss_weight
             distance_loss = 0.0
             feature_loss = 0.0
             if self.pre_features_central is not None:
                 distance_loss = self.count_features_central_distance(self.pre_features_central, images, labels)
-                feature_predictions = self.cls.call_2(features)
-                if self.config.dataset != "elliptic":
-                    feature_loss = self.feature_loss_fn_cls(features_label, feature_predictions)
-                else:
-                    feature_true = tf.expand_dims(features_label, axis=1)
-                    feature_loss = tf.nn.weighted_cross_entropy_with_logits(labels=feature_true, logits=feature_predictions, pos_weight=self.weights)
+                for layer_num, (features, features_label) in zip(layer_num_list, batch_data[:-1]):
+                    feature_predictions = self.cls.call_2(layer_num, features)
+                    if self.config.dataset != "elliptic":
+                        feature_loss = self.feature_loss_fn_cls(features_label, feature_predictions)
+                    else:
+                        feature_true = tf.expand_dims(features_label, axis=1)
+                        feature_loss = tf.nn.weighted_cross_entropy_with_logits(labels=feature_true, logits=feature_predictions, pos_weight=self.weights)
+                    loss += (feature_loss*self.feat_loss_weight)
             elif self.initial_feature_center is not None:
                 distance_loss = self.count_features_central_distance(self.initial_feature_center, images, labels)
             loss += (distance_loss*self.cos_loss_weight)
-            loss += (feature_loss*self.feat_loss_weight)
         gradients = tape.gradient(loss, self.cls.trainable_variables)
         self.cls_optimizer.apply_gradients(zip(gradients, self.cls.trainable_variables))
         return self.cls_train_loss(loss), self.cls_train_accuracy(labels, predictions), self.cls_train_distance_loss(distance_loss),self.cls_train_feature_loss(feature_loss)
@@ -203,26 +209,42 @@ class Trainer:
     
     def get_features_central(self, images, labels):  
         #using client train dataset to generate features central
-        feature_avg_dic = {}
+        # feature_avg_dic = {}
+        # for label in set(labels):
+        #     label_index = np.where(labels==label)
+        #     feature = self.cls.get_features(images[label_index])
+        #     avg_feature = tf.reduce_mean(feature, axis=0) 
+        #     feature_avg_dic[label] = avg_feature
+        # return feature_avg_dic
+        feature_output_layer_feature_avg_dic = {i:{} for i in self.config.features_ouput_layer_list}
         for label in set(labels):
             label_index = np.where(labels==label)
-            feature = self.cls.get_features(images[label_index])
-            avg_feature = tf.reduce_mean(feature, axis=0) 
-            feature_avg_dic[label] = avg_feature
-        return feature_avg_dic
+            feature_list = self.cls.get_features(images[label_index])
+            for k,v in feature_list.items():
+                avg_feature = tf.reduce_mean(v, axis=0) 
+                feature_output_layer_feature_avg_dic[k][label] = avg_feature
+        return feature_output_layer_feature_avg_dic
 
     def count_features_central_distance(self, features_central, images, labels):
         # dist = tf.linalg.norm(new_feature_avg_dic-self.pre_features_central)
         feature = self.cls.get_features(images)
         # labels = np.argmax(labels, axis=1)
         accumulate_loss = 0
-        for vector,label in zip(feature,labels): 
-            pre_vector = features_central[label.numpy()]
-            vector = tf.reshape(vector, [-1,])
-            pre_vector = tf.reshape(pre_vector, [-1,])
-            cos_sim = tf.tensordot(vector, pre_vector,axes=1)/(tf.linalg.norm(vector)*tf.linalg.norm(pre_vector)+0.001)
-            accumulate_loss += 1 - cos_sim
+        for k,v in feature.items():
+            for vector,label in zip(v,labels): 
+                pre_vector = features_central[k][label.numpy()]
+                vector = tf.reshape(vector, [-1,])
+                pre_vector = tf.reshape(pre_vector, [-1,])
+                cos_sim = tf.tensordot(vector, pre_vector,axes=1)/(tf.linalg.norm(vector)*tf.linalg.norm(pre_vector)+0.001)
+                accumulate_loss += 1 - cos_sim
         return accumulate_loss / len(labels)
+        # for vector,label in zip(feature[self.config.features_ouput_layer[0]],labels):  
+        #     pre_vector = self.pre_features_central[label]
+        #     vector = tf.reshape(vector, [-1,])
+        #     pre_vector = tf.reshape(pre_vector, [-1,])
+        #     cos_sim = tf.tensordot(vector, pre_vector,axes=1)/(tf.linalg.norm(vector)*tf.linalg.norm(pre_vector)+0.001)
+        #     accumulate_loss += 1 - cos_sim
+        # return accumulate_loss / len(labels)
 
     def train_cls(self, worksheet, feature_data, suffix):
         checkpoint_dir = './tmp/%s/%s%s/cls_training_checkpoints/'%(self.client_name, self.version_num,suffix)
@@ -241,28 +263,34 @@ class Trainer:
         # checkpoint.restore(tf.train.latest_checkpoint('./tmp/%s/13_with_0/cls_training_checkpoints/'%(self.client_name)+'local')) 
         if feature_data is None:
             if len(self.train_data) >  self.batch_size:
-                self.train_data  = self.train_data.batch(self.batch_size,drop_remainder=True)
+                train_data  = self.train_data.batch(self.batch_size,drop_remainder=True)
             else:
-                self.train_data  = self.train_data.batch(self.batch_size)
+                train_data  = self.train_data.batch(self.batch_size)
+        elif not self.config.update_feature_by_epoch:
+            all_dataset = list(feature_data.values())
+            all_dataset.append(self.train_data)
         for cur_epoch in range(self.cls.cur_epoch_tensor.numpy(), self.config.cls_num_epochs + 1, 1):
             if feature_data:
                 if self.config.update_feature_by_epoch:
-                    feature_idx = np.random.choice(range(len(feature_data)), size=self.train_data_num, replace=True)
-                    feature_dataset = copy.deepcopy(np.array(feature_data, dtype=object)[feature_idx])
-                    feature, labels = zip(*feature_dataset)
-                    feature_dataset = tf.data.Dataset.from_tensor_slices(
-                        (np.array(feature), np.array(labels))).shuffle(len(labels))
-                else:
-                    feature_dataset = feature_data
+                    feature_dataset = {}
+                    feature_idx = np.random.choice(range(self.config.total_features_num), size=self.train_data_num, replace=True)
+                    for k, v in feature_data.items():
+                        v = copy.deepcopy(np.array(v, dtype=object)[feature_idx])
+                        feature, labels = zip(*v)
+                        v = tf.data.Dataset.from_tensor_slices(
+                            (np.array(feature), np.array(labels))).shuffle(len(labels))
+                        feature_dataset[k] = v
+                    all_dataset = list(feature_dataset.values())
+                    all_dataset.append(self.train_data)
                 if len(self.train_data) >  self.batch_size:
-                    train_data  = tf.data.Dataset.zip((self.train_data,feature_dataset)).batch(self.batch_size,drop_remainder=True)
+                    all_train_data  = tf.data.Dataset.zip(tuple(all_dataset)).batch(self.batch_size,drop_remainder=True)
                 else:
-                    train_data  = tf.data.Dataset.zip((self.train_data,feature_dataset)).batch(self.batch_size)
-                for (img,img_label), (features,features_label) in train_data:
-                    self.train_cls_step(img, img_label, features, features_label)
+                    all_train_data  = tf.data.Dataset.zip(tuple(all_dataset)).batch(self.batch_size)
+                for batch_data in all_train_data:
+                    self.train_cls_step(batch_data, feature_data.keys())
             else:
-                for x, y in self.train_data:
-                    self.train_cls_step(x,y)
+                for batch_data in train_data:
+                    self.train_cls_step(batch_data)
 
             with self.CLS_train_summary_writer.as_default():
                 tf.summary.scalar('cls_loss_'+self.client_name, self.cls_train_loss.result(), step=cur_epoch) 
@@ -333,10 +361,16 @@ class Trainer:
                 self.cls.save_weights(f"{path}/cp-{cur_epoch:04d}.ckpt")
                 features_central = self.get_features_central(self.train_x,self.train_y)
                 real_features = self.generate_real_features()
-                with open(f"{path}/features_central.pkl","wb") as fp:
-                    pickle.dump(features_central, fp)
-                np.save(f"{path}/real_features",real_features)
-                np.save(f"{path}/features_label",self.train_y)
+                # with open(f"{path}/features_central.pkl","wb") as fp:
+                #     pickle.dump(features_central, fp)
+                # np.save(f"{path}/real_features",real_features)
+                # np.save(f"{path}/features_label",self.train_y)
+                for k,v in real_features.items():
+                    os.makedirs(f"{path}/{k}_layer_output")
+                    with open(f"{path}/{k}_layer_output/features_central.pkl","wb") as fp:
+                        pickle.dump(features_central[k], fp)
+                    np.save(f"{path}/{k}_layer_output/real_train_features",v)
+                    np.save(f"{path}/{k}_layer_output/train_y",self.train_y)
 
             template = 'Epoch {}, Loss: {}, Accuracy: {}, Test Loss: {}, Test Accuracy: {}, Global Test Accuracy: {}'
             print (template.format(cur_epoch+1,

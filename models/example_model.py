@@ -119,16 +119,23 @@ class Classifier(BaseModel):
         x = self.dense_1(x)
         return self.dense_2(x)
     
-    def call_2(self, x):
+    def call_2(self, layer_num, x):
         #for other client
-        for layer in self.feature_layers[self.config.features_ouput_layer:]:
+        for layer in self.feature_layers[layer_num:]:
             x = layer(x)
         return x
     
-    def get_features(self, x):
-        for layer in self.feature_layers[:self.config.features_ouput_layer]:
-            x = layer(x)
-        return x
+    def get_features(self, inputs):
+        # for layer in self.feature_layers[:self.config.features_ouput_layer]:
+        #     x = layer(x)
+        # return x
+        feature_list = {}
+        for features_ouput_layer_num in self.config.features_ouput_layer_list:
+            x = np.copy(inputs)
+            for layer in self.feature_layers[:features_ouput_layer_num]:
+                x = layer(x)
+            feature_list[features_ouput_layer_num] = x
+        return feature_list
     
 class ClassifierElliptic(BaseModel):
     def __init__(self,config):
@@ -176,16 +183,23 @@ class ClassifierElliptic(BaseModel):
         x = self.dense_1(x)
         return self.dense_2(x)
     
-    def call_2(self, x):
+    def call_2(self, layer_num, x):
         #for other client
-        for layer in self.feature_layers[self.config.features_ouput_layer:]:
+        for layer in self.feature_layers[layer_num:]:
             x = layer(x)
         return x
     
-    def get_features(self, x):
-        for layer in self.feature_layers[:self.config.features_ouput_layer]:
-            x = layer(x)
-        return x
+    def get_features(self, inputs):
+        # for layer in self.feature_layers[:self.config.features_ouput_layer]:
+        #     x = layer(x)
+        # return x
+        feature_list = {}
+        for features_ouput_layer_num in self.config.features_ouput_layer_list:
+            x = np.copy(inputs)
+            for layer in self.feature_layers[:features_ouput_layer_num]:
+                x = layer(x)
+            feature_list[features_ouput_layer_num] = x
+        return feature_list
     
 class C_Discriminator(BaseModel):
     def __init__(self,config):
