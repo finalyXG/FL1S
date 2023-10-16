@@ -35,7 +35,7 @@ def model_avg_init(config, cls):
         checkpoint_dir = f'./tmp/{client_name}/{client_version}/cls_training_checkpoints/local/'
         cls.load_weights(tf.train.latest_checkpoint(checkpoint_dir)).expect_partial()
         weight_object.append(copy.deepcopy(cls.weights))
-    if config.use_initial_model_weight and data_amts > 1:
+    if data_amts > 1:
         w_avg = copy.deepcopy(weight_object[0])
         for index in range(len(w_avg)):
             w_avg[index] = w_avg[index]/data_amts
@@ -74,8 +74,7 @@ def create_feature_dataset(config, client_data):
         if not config.update_feature_by_epoch and config.feature_match_train_data and feature_idx is None:
             #Convert the number of initial client feature to be the same as client_data
             feature_idx = np.random.choice(range(config.total_features_num), size=client_train_data_num, replace=True)
-
-        if feature_idx:
+        if feature_idx is not None:
             feature_dataset = np.array(feature_dataset, dtype=object)[feature_idx]
         if not config.update_feature_by_epoch:
             feature, labels = zip(*feature_dataset)
@@ -216,11 +215,13 @@ def clients_main(config):
                         hp.hparams(hparams)  # record the values used in this trial
                         if config.dataset != "elliptic":
                             cls = Classifier(config)
+                            teacher = Classifier(config)
                         else:
                             cls = ClassifierElliptic(config)
-
+                            teacher = ClassifierElliptic(config)
                         feature_data = None
                         initial_feature_center = None
+                        teacher_list = []
                         print("feture dimension", config.feature_dim)
                         if feat_loss_weight == float(0):
                             config.feature_match_train_data = 1
@@ -229,12 +230,22 @@ def clients_main(config):
                             if config.use_initial_model_weight:
                                 cls = model_avg_init(config, cls)
                             feature_data, client_data = create_feature_dataset(config, client_data)
+                            if config.soft_target_loss_weight != float(0) or config.hidden_rep_loss_weight != float(0):
+                                if config.teacher_repeat:
+                                    teacher_idx = np.random.choice(range(len(config.features_central_client_name_list)), size=config.teacher_num, replace=True)
+                                else:
+                                    teacher_idx = np.random.choice(range(len(config.features_central_client_name_list)), size=config.teacher_num, replace=False)
+                                print("teacher_idx",teacher_idx)
+                                for index in  teacher_idx:
+                                    checkpoint_dir = f'./tmp/{config.features_central_client_name_list[index]}/{config.features_central_version_list[index]}/cls_training_checkpoints/local/'
+                                    teacher.load_weights(tf.train.latest_checkpoint(checkpoint_dir)).expect_partial()
+                                    teacher_list.append(copy.deepcopy(teacher))
                         elif config.whether_initial_feature_center:
                             initial_feature_center = generate_initial_feature_center(config, all_test_y)
                         generator = AC_Generator(config)
                         discriminator = AC_Discriminator(config)
 
-                        trainer = Trainer(config.clients_name, version_num, client_data, all_test_x, all_test_y, initial_feature_center, pre_features_central, cls, discriminator, generator,config,hparams)
+                        trainer = Trainer(config.clients_name, version_num, client_data, all_test_x, all_test_y, initial_feature_center, pre_features_central, cls, teacher_list, discriminator, generator,config,hparams)
                         cls.init_cur_epoch()
                         cur_features_central, real_features, best_global_acc, best_local_acc = trainer.train_cls(worksheet, feature_data, suffix)
                         # features_label = trainer.get_features_label()
@@ -309,6 +320,11 @@ if __name__ == '__main__':
         help="Define the consine similarity socre each initial feature center have to reach",
         default=0.5
     )
+    parser.add_argument("--T", type=float, default=1.0)
+    parser.add_argument("--soft_target_loss_weight", type=float, default=0.0) 
+    parser.add_argument("--hidden_rep_loss_weight", type=float, default=0.0)
+    parser.add_argument("--teacher_num", type=int, default=1)
+    parser.add_argument("--teacher_repeat", type=int, default=0)
     parser.add_argument("--features_central_client_name_list", type=str, nargs='+', default=["clients_1"])  #use which version as initial client( only for initial_client==0)
     parser.add_argument("--features_central_version_list", type=str,nargs='+',  default=["0"])  #use which version as initial client( only for initial_client==0)
     parser.add_argument(
@@ -357,6 +373,7 @@ if __name__ == '__main__':
     args.use_initial_model_weight = bool(args.use_initial_model_weight)
     args.use_dirichlet_split_data = bool(args.use_dirichlet_split_data)
     args.update_feature_by_epoch = bool(args.update_feature_by_epoch)
+    args.teacher_repeat = bool(args.teacher_repeat)
     print("client:", args.clients_name)
     print("Whether initial_client:", args.initial_client)
     print("features_central_version_list:", args.features_central_version_list)

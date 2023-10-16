@@ -108,7 +108,7 @@ class Classifier(BaseModel):
         self.pool_2 = MaxPooling2D((2, 2))
         self.flatten = Flatten()
         self.dense_1 = Dense(512, activation='relu', kernel_initializer=kernel_initializer)
-        self.dense_2 = Dense(self.config.num_classes, activation='softmax', kernel_initializer=kernel_initializer)
+        self.dense_2 = Dense(self.config.num_classes,  kernel_initializer=kernel_initializer)#activation='softmax',
 
     def call(self, inputs):
         x = self.cov_1(inputs)
@@ -179,8 +179,8 @@ class ClassifierElliptic(BaseModel):
         self.dense_1 = Dense(50, activation=tf.nn.leaky_relu , input_shape=(self.config.input_feature_size,), kernel_initializer=kernel_initializer)
         self.dense_2 = Dense(50, activation=tf.nn.leaky_relu , input_shape=(self.config.input_feature_size,), kernel_initializer=kernel_initializer)
         self.dense_3 = Dense(50, activation=tf.nn.leaky_relu , input_shape=(self.config.input_feature_size,), kernel_initializer=kernel_initializer)
-        # self.dense_4 = Dense(50, activation=tf.nn.leaky_relu , input_shape=(self.config.input_feature_size,), kernel_initializer=kernel_initializer)
-        self.dense_4 = Dense(1, activation='sigmoid', kernel_initializer=kernel_initializer)#, bias_initializer=output_bias
+        # self.dense_4 = Dense(1, activation='sigmoid', kernel_initializer=kernel_initializer)#, bias_initializer=output_bias
+        self.dense_4 = Dense(2, kernel_initializer=kernel_initializer)#, bias_initializer=output_bias  activation='softmax',
 
     def call(self, x):
         x = self.dense_1(x)
