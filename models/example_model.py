@@ -175,12 +175,11 @@ class ClassifierElliptic(BaseModel):
     #     return self.dense_7(x)
 
     def layer_build(self, kernel_initializer):
-        output_bias = tf.keras.initializers.Constant(self.config.elliptic_initial_bias)
         self.dense_1 = Dense(50, activation=tf.nn.leaky_relu , input_shape=(self.config.input_feature_size,), kernel_initializer=kernel_initializer)
         self.dense_2 = Dense(50, activation=tf.nn.leaky_relu , input_shape=(self.config.input_feature_size,), kernel_initializer=kernel_initializer)
         self.dense_3 = Dense(50, activation=tf.nn.leaky_relu , input_shape=(self.config.input_feature_size,), kernel_initializer=kernel_initializer)
-        # self.dense_4 = Dense(1, activation='sigmoid', kernel_initializer=kernel_initializer)#, bias_initializer=output_bias
-        self.dense_4 = Dense(2, kernel_initializer=kernel_initializer)#, bias_initializer=output_bias  activation='softmax',
+        # self.dense_4 = Dense(1, activation='sigmoid', kernel_initializer=kernel_initializer)
+        self.dense_4 = Dense(2, kernel_initializer=kernel_initializer)  #activation='softmax',
 
     def call(self, x):
         x = self.dense_1(x)
