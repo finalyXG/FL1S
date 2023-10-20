@@ -16,12 +16,15 @@ class DataGenerator:
         np.random.seed(config.data_random_seed)
         random.seed(config.data_random_seed)
         if config.dataset == "mnist":
-            mnist = tf.keras.datasets.mnist
             config.num_channels = 1
             config.num_classes = 10
             config.image_size = 28
+            # mnist = tf.keras.datasets.mnist
+            # (self.input, self.y), (self.test_x, self.test_y) = mnist.load_data()
+            with np.load("example/mnist.npz", allow_pickle=True) as f:
+                self.input, self.y = f["x_train"], f["y_train"]
+                self.test_x, self.test_y = f["x_test"], f["y_test"]
 
-            (self.input, self.y), (self.test_x, self.test_y) = mnist.load_data()
             self.input = self.input.reshape(self.input.shape[0], 28, 28, config.num_channels).astype('float32')
             self.test_x = self.test_x.reshape(self.test_x.shape[0], 28, 28, config.num_channels).astype('float32')
 
