@@ -1,28 +1,85 @@
 
 import numpy as np
-import pickle
 import tensorflow as tf
 from models.example_model import Classifier, ClassifierElliptic
 import argparse
 from data_loader.data_generator import DataGenerator
-
 import copy
-def concatenate_feature_labels(config, tail_path):
-    for index, client_name in enumerate(config.features_central_client_name_list):
-        path = f"./script_tmp/stage_1/{config.dataset}/{client_name}/{tail_path}"
-        if index:
-            tmp_feature = np.load(f"{path}/real_train_features.npy",allow_pickle=True)
-            if config.feature_type == 'fake':
-                tmp_feature = np.load(f"/Users/yangingdai/Downloads/GAN_Templtate/tmp/{client_name}/{config.fake_features_version_list[index]}/fake_features.npy",allow_pickle=True)
-            tmp_labels = np.load(f"{path}/train_y.npy",allow_pickle=True)
-            feature = np.concatenate((feature, tmp_feature),axis=0)
-            labels = np.concatenate((labels, tmp_labels),axis=0)
-        else:   #when index == 0 initial feature and labels
-            feature = np.load(f"{path}/real_train_features.npy",allow_pickle=True)
-            if config.feature_type == 'fake':
-                feature = np.load(f"/Users/yangingdai/Downloads/GAN_Templtate/tmp/{client_name}/{config.fake_features_version_list[index]}/fake_features.npy",allow_pickle=True)
-            labels = np.load(f"{path}/train_y.npy",allow_pickle=True)
-    return feature, labels
+
+
+def get_features_centre(features, labels): 
+    feature_output_layer_feature_avg_dic = {i:{} for i in features.keys()}
+    for layer_num, feature_data in features.items():
+        feature_data, labels = np.array(feature_data), np.array(labels)
+        for label in set(labels):
+            label_index = np.where(labels==label)
+            feature_in_label = feature_data[label_index]
+            avg_feature = tf.reduce_mean(feature_in_label, axis=0) 
+            feature_output_layer_feature_avg_dic[layer_num][label] = avg_feature
+    return feature_output_layer_feature_avg_dic
+
+def concatenate_feature_labels(config):
+    feature_list = []
+    label_list = []
+    features_centre_dict_list = []
+    if config.clients_1_feature_path is not None:
+        tmp_feature = np.load(f"{config.clients_1_feature_path}/real_features.npy",allow_pickle=True).item()
+        feature_list.append(tmp_feature)
+        tmp_label = np.load(f"{config.clients_1_feature_path}/label.npy",allow_pickle=True)
+        label_list.append(tmp_label)
+        features_centre_dict = get_features_centre(tmp_feature, tmp_label)
+        features_centre_dict_list.append(features_centre_dict)
+    if config.clients_2_feature_path is not None:
+        tmp_feature = np.load(f"{config.clients_2_feature_path}/real_features.npy",allow_pickle=True).item()
+        feature_list.append(tmp_feature)
+        tmp_label = np.load(f"{config.clients_2_feature_path}/label.npy",allow_pickle=True)
+        label_list.append(tmp_label)
+        features_centre_dict = get_features_centre(tmp_feature, tmp_label)
+        features_centre_dict_list.append(features_centre_dict)
+    if config.clients_3_feature_path is not None:
+        tmp_feature = np.load(f"{config.clients_3_feature_path}/real_features.npy",allow_pickle=True).item()
+        feature_list.append(tmp_feature)
+        tmp_label = np.load(f"{config.clients_3_feature_path}/label.npy",allow_pickle=True)
+        label_list.append(tmp_label)
+        features_centre_dict = get_features_centre(tmp_feature, tmp_label)
+        features_centre_dict_list.append(features_centre_dict)
+    if config.clients_4_feature_path is not None:
+        tmp_feature = np.load(f"{config.clients_4_feature_path}/real_features.npy",allow_pickle=True).item()
+        feature_list.append(tmp_feature)
+        tmp_label = np.load(f"{config.clients_4_feature_path}/label.npy",allow_pickle=True)
+        label_list.append(tmp_label)
+        features_centre_dict = get_features_centre(tmp_feature, tmp_label)
+        features_centre_dict_list.append(features_centre_dict)
+    if config.clients_5_feature_path is not None:
+        tmp_feature = np.load(f"{config.clients_5_feature_path}/real_features.npy",allow_pickle=True).item()
+        feature_list.append(dict(tmp_feature))
+        tmp_label = np.load(f"{config.clients_5_feature_path}/label.npy",allow_pickle=True)
+        label_list.append(tmp_label)
+        features_centre_dict = get_features_centre(tmp_feature, tmp_label)
+        features_centre_dict_list.append(features_centre_dict)
+    dataset_dict = {}
+    feature_dict = {}
+    labels_dict = {}
+    for index, feature in enumerate(feature_list):
+        for layer_num in config.features_ouput_layer_list:
+            if index:
+                feature_dict[layer_num] = np.concatenate((feature[layer_num], feature_dict[layer_num]),axis=0)
+                labels_dict[layer_num] = np.concatenate((label_list[index], labels_dict[layer_num]),axis=0)
+            else:   #when index == 0 initial feature and labels
+                feature_dict[layer_num] = feature[layer_num]
+                labels_dict[layer_num] = label_list[index]
+
+    total_features_centre_dict = {layer_num: None for layer_num in feature_dict.keys()}
+    for layer_num, v in feature_dict.items():
+        dataset_dict[layer_num] = list(zip(v, labels_dict[layer_num]))
+        for features_centre_dict in features_centre_dict_list:
+            if total_features_centre_dict[layer_num]:
+                for label, features_centre in features_centre_dict[layer_num].items():
+                    total_features_centre_dict[layer_num][label] = tf.stack([total_features_centre_dict[layer_num][label],features_centre])
+                    total_features_centre_dict[layer_num][label] = tf.reduce_mean(total_features_centre_dict[layer_num][label], axis=0) 
+            else:
+                total_features_centre_dict[layer_num] = features_centre_dict[layer_num]
+    return dataset_dict, total_features_centre_dict
 
 def model_avg_init(config, cls):
     weight_object = []
@@ -52,53 +109,17 @@ def model_avg_init(config, cls):
         cls.set_weights(copy.deepcopy(w_avg))
     return cls
 
-def create_feature_dataset(config, client_data):
-    '''
-    generate initial client feature to dataset
-    '''
-    dataset_dict = {}
-    indices, feature_idx = None, None
-    (train_data, test_data) = client_data
-    client_train_data_num = len(train_data)
-    for layer_num in config.features_ouput_layer_list:
-        if config.use_assigned_epoch_feature:
-            tail_path = f"assigned_epoch/{config.use_assigned_epoch_feature}/{layer_num}_layer_output/"
-        else:
-            tail_path = f"{layer_num}_layer_output/"
-        feature, labels = concatenate_feature_labels(config, tail_path)
-        config.total_features_num = len(labels)
-        feature_dataset = list(zip(feature, labels))
-        if config.take_feature_ratio < 1 and indices is None:
-            num_feature_keep = int(config.total_features_num * config.take_feature_ratio)
-            indices = np.random.permutation(config.total_features_num)[
-                    :num_feature_keep
-                ]
-        if indices:  #take_feature_ratio
-            feature_dataset = np.array(feature_dataset, dtype=object)[indices]
-        if not config.update_feature_by_epoch and config.feature_match_train_data and feature_idx is None:
-            #Convert the number of initial client feature to be the same as client_data
-            feature_idx = np.random.choice(range(config.total_features_num), size=client_train_data_num, replace=True)
-        if feature_idx is not None:
-            feature_dataset = np.array(feature_dataset, dtype=object)[feature_idx]
-        if not config.update_feature_by_epoch:
-            feature, labels = zip(*feature_dataset)
-            feature_dataset = tf.data.Dataset.from_tensor_slices(
-                    (np.array(feature), np.array(labels)))
-        dataset_dict[layer_num] = feature_dataset
-    if not config.update_feature_by_epoch and not config.feature_match_train_data:
-        train_data_idx = np.random.choice(range(client_train_data_num), size=config.total_features_num, replace=True)
-        train_data = np.array(train_data, dtype=object)[train_data_idx]
-    client_data = (train_data, test_data)
-    return dataset_dict, client_data
-
 def mian(config, cls):
-    teacher_list = []
     avg_model = None
     feature_dataset = None
     feature_center = None
     if config.use_initial_model_weight:
         avg_model = model_avg_init(config, cls)
-    return teacher_list, avg_model, feature_dataset, feature_center
+    feature_data_dict, feature_center = concatenate_feature_labels(config)
+    avg_model.save_weights(f"script_tmp/server/{config.dataset}/{config.clients_name}/model_avg/cp-{1:04d}.ckpt")
+    np.save(f"script_tmp/server/{config.dataset}/{config.clients_name}/feature_center",feature_center)
+    np.save(f"script_tmp/server/{config.dataset}/{config.clients_name}/real_features",feature_data_dict)
+    return avg_model, feature_dataset, feature_center
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -150,6 +171,7 @@ if __name__ == '__main__':
 
     parser.add_argument("--learning_rate", type=float,default=0.001) 
     parser.add_argument("--batch_size", type=int, default=32) 
+    parser.add_argument("--teacher_repeat", type=int, default=0)
 
     parser.add_argument("--features_ouput_layer_list", help="The index of features output Dense layer",nargs='+',type=int, default=[-2])
     parser.add_argument("--latent_dim", type=int, default=16)
@@ -161,6 +183,12 @@ if __name__ == '__main__':
     parser.add_argument("--clients_3_model_path", type=str, default=None)
     parser.add_argument("--clients_4_model_path", type=str, default=None)
     parser.add_argument("--clients_5_model_path", type=str, default=None)
+
+    parser.add_argument("--clients_1_feature_path", type=str, default=None)
+    parser.add_argument("--clients_2_feature_path", type=str, default=None)
+    parser.add_argument("--clients_3_feature_path", type=str, default=None)
+    parser.add_argument("--clients_4_feature_path", type=str, default=None)
+    parser.add_argument("--clients_5_feature_path", type=str, default=None)
 
     parser.add_argument("--max_to_keep", type=int, default=1)
     parser.add_argument("--use_same_kernel_initializer", type=int, default=1)
@@ -174,6 +202,7 @@ if __name__ == '__main__':
     print("features_central_version_list:", args.features_central_version_list)
     print("features_ouput_layer_list:",args.features_ouput_layer_list)
     print("use_dirichlet_split_data",args.use_dirichlet_split_data)
+    args.teacher_repeat = bool(args.teacher_repeat)
 
     if args.dataset != "elliptic":
         cls = Classifier(args)
@@ -181,12 +210,5 @@ if __name__ == '__main__':
         cls = ClassifierElliptic(args)
     teacher_list, avg_model, feature_dataset, feature_center = mian(args, cls)
 
-    #verify result
-    # data = DataGenerator(args)
-    # client_data = data.clients[args.clients_name]
-    # (train_data, test_data) = client_data
-    # train_x, train_y = zip(*train_data)
-    # train_x  = tf.reshape(train_x, [-1,args.input_feature_size])
-    # pre = avg_model(train_x[:10])
-    # print("pre top 10", pre[0])
-
+# export PYTHONPATH=/Users/yangingdai/Downloads/GAN_Tensorflow-Project-Template; python mains/client.py --batch_size_list 32 --learning_rate_list 0.001 --alpha 10  --use_dirichlet_split_data 1 --cls_num_epochs 1 --initial_client 0 --num_clients 5 --feature_dim 50 --dataset elliptic --clients_name clients_1 --sample_ratio 0.1 --features_ouput_layer_list -2 --features_central_client_name clients_1 clients_2 clients_3 clients_4 clients_5  --features_central_version 0 0 0 0 0 --use_initial_model_weight 1 --cos_loss_weight_list 0 --feat_loss_weight_list 1 --feature_match_train_data 0 --update_feature_by_epoch 0
+# export PYTHONPATH=/Users/yangingdai/Downloads/GAN_Tensorflow-Project-Template; python script/main_server.py --use_initial_model_weight 1 --clients_1_model_path script_tmp/stage_1/elliptic/clients_1/cls_training_checkpoints/local --clients_2_model_path script_tmp/stage_1/elliptic/clients_2/cls_training_checkpoints/local --clients_3_model_path script_tmp/stage_1/elliptic/clients_3/cls_training_checkpoints/local --clients_4_model_path /Users/yangingdai/Downloads/GAN_Tensorflow-Project-Template/script_tmp/stage_1/elliptic/clients_4/cls_training_checkpoints/local --clients_5_model_path script_tmp/stage_1/elliptic/clients_5/cls_training_checkpoints/local --clients_1_feature_path script_tmp/stage_1/elliptic/clients_1 --clients_2_feature_path script_tmp/stage_1/elliptic/clients_2 --clients_3_feature_path script_tmp/stage_1/elliptic/clients_3 --clients_4_feature_path script_tmp/stage_1/elliptic/clients_4 --clients_5_feature_path script_tmp/stage_1/elliptic/clients_5 --dataset elliptic
