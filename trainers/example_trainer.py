@@ -187,6 +187,10 @@ class Trainer:
             feature_loss, total_feature_loss = 0.0, 0.0
             if self.pre_features_central is not None:
                 distance_loss = self.count_features_central_distance(self.pre_features_central, images, labels)
+            elif self.initial_feature_center is not None:
+                distance_loss = self.count_features_central_distance(self.initial_feature_center, images, labels)
+            loss += (distance_loss*self.cos_loss_weight)
+            if type(batch_data[0]) == tuple and self.feat_loss_weight != float(0):
                 for layer_num, (features, features_label) in zip(layer_num_list, batch_data[:-1]):
                     feature_predictions = self.cls.call_2(layer_num, features)
                     feature_predictions = tf.nn.softmax(feature_predictions)
@@ -199,9 +203,6 @@ class Trainer:
                         feature_loss = tf.nn.weighted_cross_entropy_with_logits(labels=feature_true, logits=feature_predictions, pos_weight=self.weights)
                     loss += (feature_loss*self.feat_loss_weight)
                     total_feature_loss += feature_loss
-            elif self.initial_feature_center is not None:
-                distance_loss = self.count_features_central_distance(self.initial_feature_center, images, labels)
-            loss += (distance_loss*self.cos_loss_weight)
         gradients = tape.gradient(loss, self.cls.trainable_variables)
         self.cls_optimizer.apply_gradients(zip(gradients, self.cls.trainable_variables))
         return self.cls_train_loss(loss), self.cls_train_accuracy(labels, predictions), self.cls_train_distance_loss(distance_loss),self.cls_train_feature_loss(total_feature_loss)
@@ -265,13 +266,6 @@ class Trainer:
                 cos_sim = tf.tensordot(vector, pre_vector,axes=1)/(tf.linalg.norm(vector)*tf.linalg.norm(pre_vector)+0.001)
                 accumulate_loss += 1 - cos_sim
         return accumulate_loss / len(labels)
-        # for vector,label in zip(feature[self.config.features_ouput_layer[0]],labels):  
-        #     pre_vector = self.pre_features_central[label]
-        #     vector = tf.reshape(vector, [-1,])
-        #     pre_vector = tf.reshape(pre_vector, [-1,])
-        #     cos_sim = tf.tensordot(vector, pre_vector,axes=1)/(tf.linalg.norm(vector)*tf.linalg.norm(pre_vector)+0.001)
-        #     accumulate_loss += 1 - cos_sim
-        # return accumulate_loss / len(labels)
 
     def train_cls(self, worksheet, feature_data, suffix):
         checkpoint_dir = './tmp/%s/%s%s/cls_training_checkpoints/'%(self.client_name, self.version_num,suffix)
@@ -387,10 +381,6 @@ class Trainer:
                 self.cls.save_weights(f"{path}/cp-{cur_epoch:04d}.ckpt")
                 features_central = self.get_features_central(self.train_x,self.train_y)
                 real_features = self.generate_real_features()
-                # with open(f"{path}/features_central.pkl","wb") as fp:
-                #     pickle.dump(features_central, fp)
-                # np.save(f"{path}/real_features",real_features)
-                # np.save(f"{path}/features_label",self.train_y)
                 for k,v in real_features.items():
                     os.makedirs(f"{path}/{k}_layer_output")
                     with open(f"{path}/{k}_layer_output/features_central.pkl","wb") as fp:
