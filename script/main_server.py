@@ -63,8 +63,8 @@ def concatenate_feature_labels(config):
     for index, feature in enumerate(feature_list):
         for layer_num in config.features_ouput_layer_list:
             if index:
-                feature_dict[layer_num] = np.concatenate((feature[layer_num], feature_dict[layer_num]),axis=0)
-                labels_dict[layer_num] = np.concatenate((label_list[index], labels_dict[layer_num]),axis=0)
+                feature_dict[layer_num] = np.concatenate((feature_dict[layer_num], feature[layer_num]),axis=0)
+                labels_dict[layer_num] = np.concatenate((labels_dict[layer_num], label_list[index]),axis=0)
             else:   #when index == 0 initial feature and labels
                 feature_dict[layer_num] = feature[layer_num]
                 labels_dict[layer_num] = label_list[index]
@@ -116,6 +116,8 @@ def mian(config, cls):
     if config.use_initial_model_weight:
         avg_model = model_avg_init(config, cls)
     feature_data_dict, feature_center = concatenate_feature_labels(config)
+    test_sample = np.random.rand(3,config.input_feature_size)
+    avg_model(test_sample)
     avg_model.save_weights(f"script_tmp/server/{config.dataset}/{config.clients_name}/model_avg/cp-{1:04d}.ckpt")
     np.save(f"script_tmp/server/{config.dataset}/{config.clients_name}/feature_center",feature_center)
     np.save(f"script_tmp/server/{config.dataset}/{config.clients_name}/real_features",feature_data_dict)
@@ -208,7 +210,7 @@ if __name__ == '__main__':
         cls = Classifier(args)
     else:
         cls = ClassifierElliptic(args)
-    teacher_list, avg_model, feature_dataset, feature_center = mian(args, cls)
+    avg_model, feature_dataset, feature_center = mian(args, cls)
 
 # export PYTHONPATH=/Users/yangingdai/Downloads/GAN_Tensorflow-Project-Template; python mains/client.py --batch_size_list 32 --learning_rate_list 0.001 --alpha 10  --use_dirichlet_split_data 1 --cls_num_epochs 1 --initial_client 0 --num_clients 5 --feature_dim 50 --dataset elliptic --clients_name clients_1 --sample_ratio 0.1 --features_ouput_layer_list -2 --features_central_client_name clients_1 clients_2 clients_3 clients_4 clients_5  --features_central_version 0 0 0 0 0 --use_initial_model_weight 1 --cos_loss_weight_list 0 --feat_loss_weight_list 1 --feature_match_train_data 0 --update_feature_by_epoch 0
-# export PYTHONPATH=/Users/yangingdai/Downloads/GAN_Tensorflow-Project-Template; python script/main_server.py --use_initial_model_weight 1 --clients_1_model_path script_tmp/stage_1/elliptic/clients_1/cls_training_checkpoints/local --clients_2_model_path script_tmp/stage_1/elliptic/clients_2/cls_training_checkpoints/local --clients_3_model_path script_tmp/stage_1/elliptic/clients_3/cls_training_checkpoints/local --clients_4_model_path /Users/yangingdai/Downloads/GAN_Tensorflow-Project-Template/script_tmp/stage_1/elliptic/clients_4/cls_training_checkpoints/local --clients_5_model_path script_tmp/stage_1/elliptic/clients_5/cls_training_checkpoints/local --clients_1_feature_path script_tmp/stage_1/elliptic/clients_1 --clients_2_feature_path script_tmp/stage_1/elliptic/clients_2 --clients_3_feature_path script_tmp/stage_1/elliptic/clients_3 --clients_4_feature_path script_tmp/stage_1/elliptic/clients_4 --clients_5_feature_path script_tmp/stage_1/elliptic/clients_5 --dataset elliptic
+# export PYTHONPATH=/Users/yangingdai/Downloads/GAN_Tensorflow-Project-Template; python script/main_server.py --use_initial_model_weight 1 --clients_1_model_path script_tmp/stage_1/elliptic/clients_1/cls_training_checkpoints/local --clients_2_model_path script_tmp/stage_1/elliptic/clients_2/cls_training_checkpoints/local --clients_3_model_path script_tmp/stage_1/elliptic/clients_3/cls_training_checkpoints/local --clients_4_model_path script_tmp/stage_1/elliptic/clients_4/cls_training_checkpoints/local --clients_5_model_path script_tmp/stage_1/elliptic/clients_5/cls_training_checkpoints/local --clients_1_feature_path script_tmp/stage_1/elliptic/clients_1 --clients_2_feature_path script_tmp/stage_1/elliptic/clients_2 --clients_3_feature_path script_tmp/stage_1/elliptic/clients_3 --clients_4_feature_path script_tmp/stage_1/elliptic/clients_4 --clients_5_feature_path script_tmp/stage_1/elliptic/clients_5 --dataset elliptic
