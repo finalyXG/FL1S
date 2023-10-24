@@ -155,7 +155,7 @@ def main(center_init, model, train_data, test_data, config):
 
         #save feature, feature center in cur_epoch model 
         if cur_epoch in config.initial_client_ouput_feat_epochs:
-            path = f"script_tmp/stage_1/{config.dataset}/{config.client_name}/assigned_epoch/{cur_epoch}"
+            path = f"script_tmp/stage_1/{config.dataset}/{config.clients_name}/assigned_epoch/{cur_epoch}"
             os.makedirs(path)
             model.save_weights(f"{path}/cp-{cur_epoch:04d}.ckpt")
             features_central = get_features_central(config, model, train_x,train_y)
