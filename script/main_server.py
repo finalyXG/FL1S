@@ -3,7 +3,6 @@ import numpy as np
 import tensorflow as tf
 from models.example_model import Classifier, ClassifierElliptic
 import argparse
-from data_loader.data_generator import DataGenerator
 import copy
 
 
@@ -109,14 +108,13 @@ def model_avg_init(config, cls):
         cls.set_weights(copy.deepcopy(w_avg))
     return cls
 
-def mian(config, cls):
+def mian(config, cls, test_sample):
     avg_model = None
     feature_dataset = None
     feature_center = None
     if config.use_initial_model_weight:
         avg_model = model_avg_init(config, cls)
     feature_data_dict, feature_center = concatenate_feature_labels(config)
-    test_sample = np.random.rand(3,config.input_feature_size)
     avg_model(test_sample)
     avg_model.save_weights(f"script_tmp/server/{config.dataset}/{config.clients_name}/model_avg/cp-{1:04d}.ckpt")
     np.save(f"script_tmp/server/{config.dataset}/{config.clients_name}/feature_center",feature_center)
@@ -178,6 +176,9 @@ if __name__ == '__main__':
     parser.add_argument("--features_ouput_layer_list", help="The index of features output Dense layer",nargs='+',type=int, default=[-2])
     parser.add_argument("--latent_dim", type=int, default=16)
     parser.add_argument("--feature_dim", type=int, default=128)
+    parser.add_argument("--image_size", type=int, default=28)
+    parser.add_argument("--num_classes", type=int, default=10)
+    parser.add_argument("--num_channels", type=int, default=1)
 
     parser.add_argument("--num_clients", type=int, default=2)
     parser.add_argument("--clients_1_model_path", type=str, default=None)
@@ -208,9 +209,12 @@ if __name__ == '__main__':
 
     if args.dataset != "elliptic":
         cls = Classifier(args)
+        test_sample = np.random.rand(3, args.image_size, args.image_size, args.num_channels)
     else:
         cls = ClassifierElliptic(args)
-    avg_model, feature_dataset, feature_center = mian(args, cls)
+        test_sample = np.random.rand(3, args.input_feature_size)
+
+    avg_model, feature_dataset, feature_center = mian(args, cls, test_sample)
 
 # export PYTHONPATH=/Users/yangingdai/Downloads/GAN_Tensorflow-Project-Template; python mains/client.py --batch_size_list 32 --learning_rate_list 0.001 --alpha 10  --use_dirichlet_split_data 1 --cls_num_epochs 1 --initial_client 0 --num_clients 5 --feature_dim 50 --dataset elliptic --clients_name clients_1 --sample_ratio 0.1 --features_ouput_layer_list -2 --features_central_client_name clients_1 clients_2 clients_3 clients_4 clients_5  --features_central_version 0 0 0 0 0 --use_initial_model_weight 1 --cos_loss_weight_list 0 --feat_loss_weight_list 1 --feature_match_train_data 0 --update_feature_by_epoch 0
 # export PYTHONPATH=/Users/yangingdai/Downloads/GAN_Tensorflow-Project-Template; python script/main_server.py --use_initial_model_weight 1 --clients_1_model_path script_tmp/stage_1/elliptic/clients_1/cls_training_checkpoints/local --clients_2_model_path script_tmp/stage_1/elliptic/clients_2/cls_training_checkpoints/local --clients_3_model_path script_tmp/stage_1/elliptic/clients_3/cls_training_checkpoints/local --clients_4_model_path script_tmp/stage_1/elliptic/clients_4/cls_training_checkpoints/local --clients_5_model_path script_tmp/stage_1/elliptic/clients_5/cls_training_checkpoints/local --clients_1_feature_path script_tmp/stage_1/elliptic/clients_1 --clients_2_feature_path script_tmp/stage_1/elliptic/clients_2 --clients_3_feature_path script_tmp/stage_1/elliptic/clients_3 --clients_4_feature_path script_tmp/stage_1/elliptic/clients_4 --clients_5_feature_path script_tmp/stage_1/elliptic/clients_5 --dataset elliptic
