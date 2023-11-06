@@ -19,9 +19,9 @@ class CustomCallback(tf.keras.callbacks.Callback):
             if not os.path.exists(path):
                 os.makedirs(path)
             model.save_weights(f"{path}/cp-{epoch:04d}.ckpt")
-            real_features = self.model.get_features(train_x)
+            real_features = self.model.get_features(model.train_x)
             np.save(f"{path}/real_features",real_features)
-            np.save(f"{path}/label",train_y)
+            np.save(f"{path}/label",model.train_y)
         for metric in model.metrics:
             metric.reset_states()
         for metric in model.compiled_metrics._metrics:
@@ -87,6 +87,8 @@ def main(config, model, train_data, test_data, global_test_data):
     np.random.seed(config.random_seed)
     random.seed(config.random_seed)
     train_x, train_y = zip(*train_data)
+    model.set_train_x_train_y(train_x, train_y)
+    class_rate = train_y.count(0)/train_y.count(1)
     test_x, test_y = zip(*test_data)
     global_test_x, global_test_y  = zip(*global_test_data)
     train_x, train_y = np.array(train_x),np.array(train_y)
@@ -104,6 +106,7 @@ def main(config, model, train_data, test_data, global_test_data):
         (global_test_x, global_test_y)).batch(config.batch_size)  
         
     if config.dataset == "elliptic":
+        model.set_loss_weight(class_rate)
         metrics_list = [tf.keras.metrics.BinaryAccuracy(name='cls_accuracy'),
                         tf.keras.metrics.Recall(name='recall'),
                         tf.keras.metrics.Precision(name='precision'),
@@ -273,8 +276,6 @@ if __name__ == '__main__':
     data = DataGenerator(args)
     client_data = data.clients[args.clients_name]
     (train_data, test_data) = client_data
-    train_x, train_y = zip(*train_data)
-    args.class_rate = train_y.count(0)/train_y.count(1)
 
     global_test_data = zip(data.test_x, data.test_y)
     if args.whether_initial_feature_center:
