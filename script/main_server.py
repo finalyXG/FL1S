@@ -1,10 +1,9 @@
 
 import numpy as np
 import tensorflow as tf
-from models.example_model import Classifier, ClassifierElliptic
 import argparse
 import copy
-
+from script.model import Classifier
 
 def get_features_centre(features, labels): 
     feature_output_layer_feature_avg_dic = {i:{} for i in features.keys()}
@@ -206,12 +205,10 @@ if __name__ == '__main__':
     print("features_ouput_layer_list:",args.features_ouput_layer_list)
     print("use_dirichlet_split_data",args.use_dirichlet_split_data)
     args.teacher_repeat = bool(args.teacher_repeat)
-
+    cls = Classifier(args)
     if args.dataset != "elliptic":
-        cls = Classifier(args)
         test_sample = np.random.rand(3, args.image_size, args.image_size, args.num_channels)
     else:
-        cls = ClassifierElliptic(args)
         test_sample = np.random.rand(3, args.input_feature_size)
 
     avg_model, feature_dataset, feature_center = mian(args, cls, test_sample)
