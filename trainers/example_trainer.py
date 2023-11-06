@@ -388,7 +388,7 @@ class Trainer:
                     np.save(f"{path}/{k}_layer_output/real_train_features",v)
                     np.save(f"{path}/{k}_layer_output/train_y",self.train_y)
 
-            template = 'Epoch {}, Loss: {}, Accuracy: {}, Test Loss: {}, Test Accuracy: {}, Global Test Accuracy: {}'
+            template = 'Epoch {}, Loss: {:.3f}, Accuracy: {:.3f}, Test Loss: {}, Test Accuracy: {}, Global Test Accuracy: {:.3f}'
             print (template.format(cur_epoch+1,
                                     self.cls_train_loss.result(), 
                                     self.cls_train_accuracy.result()*100,
@@ -401,13 +401,16 @@ class Trainer:
                 self.global_cls_f1_list.append(self.cls_global_test_elliptic_f1.result())
                 self.global_cls_recall_list.append(self.cls_global_test_elliptic_recall.result())
                 self.global_cls_precision_list.append(self.cls_global_test_elliptic_precision.result())
-                template = 'Train Recall: {}, Train Precision: {}, Train F1: {}, Global Test Recall: {}, Global Test Precision: {}, Global Test F1: {}'
+                template = 'Train Recall: {:.3f}, Train Precision: {:.3f}, Train F1: {:.3f}, Test Recall: {:.3f}, Test Precision: {:.3f}, Test F1: {:.3f}, Global Test Recall: {:.3f}, Global Test Precision: {:.3f}, Global Test F1: {:.3f}'
                 print (template.format(self.cls_train_elliptic_recall.result()*100,   #Test Recall: {}, Test Precision: {}, Test F1: {}, 
                                     self.cls_train_elliptic_precision.result()*100,
-                                    self.cls_train_elliptic_f1.result()*100,
+                                    self.cls_train_elliptic_f1.result()[0]*100,
+                                    self.cls_test_elliptic_recall.result()*100,  
+                                    self.cls_test_elliptic_precision.result()*100,
+                                    self.cls_test_elliptic_f1.result()[0]*100,
                                     self.cls_global_test_elliptic_recall.result()*100,
                                     self.cls_global_test_elliptic_precision.result()*100,
-                                    self.cls_global_test_elliptic_f1.result()*100,))
+                                    self.cls_global_test_elliptic_f1.result()[0]*100,))
 
             # Reset metrics every epoch
             self.cls_train_loss.reset_states()
