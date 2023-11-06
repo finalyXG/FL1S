@@ -263,7 +263,7 @@ class Trainer:
                 pre_vector = features_central[k][label.numpy()]
                 vector = tf.reshape(vector, [-1,])
                 pre_vector = tf.reshape(pre_vector, [-1,])
-                cos_sim = tf.tensordot(vector, pre_vector,axes=1)/(tf.linalg.norm(vector)*tf.linalg.norm(pre_vector)+0.001)
+                cos_sim = tf.tensordot(vector/(tf.linalg.norm(vector)+1e-6), pre_vector/(tf.linalg.norm(pre_vector)+1e-6),axes=1)#/(tf.linalg.norm(vector)*tf.linalg.norm(pre_vector)+1e-9) #tf.tensordot(vector, pre_vector,axes=1)
                 accumulate_loss += 1 - cos_sim
         return accumulate_loss / len(labels)
 
