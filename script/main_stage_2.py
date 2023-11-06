@@ -8,8 +8,75 @@ import random
 import openpyxl
 import copy
 import time
-from models.example_model import Classifier, ClassifierElliptic, C_Discriminator,C_Generator, AC_Discriminator, AC_Generator
 from data_loader.data_generator import DataGenerator
+from script.model import Classifier
+class CustomCallback(tf.keras.callbacks.Callback):
+    def __init__(self, dataset = None):
+        self.dataset = dataset
+
+    def on_epoch_begin(self, epoch, logs=None):
+        if self.dataset:
+            if model.feature_data and model.config.update_feature_by_epoch:
+                feature_dataset = {}
+                np.random.seed(model.config.random_seed)
+                feature_idx = np.random.choice(range(model.config.total_features_num), size=model.train_data_num, replace=True)
+                for k, v in model.feature_data.items():
+                    v = copy.deepcopy(np.array(v, dtype=object)[feature_idx])
+                    feature, labels = zip(*v)
+                    v = tf.data.Dataset.from_tensor_slices(
+                        (np.array(feature), np.array(labels)))#.shuffle(len(labels))
+                    feature_dataset[k] = v
+                all_dataset = list(feature_dataset.values())
+                all_dataset.append(model.train_data)
+                all_train_data  = tf.data.Dataset.zip(tuple(all_dataset)).batch(model.config.batch_size)   #,drop_remainder=True
+                self.dataset = all_train_data
+        return super().on_epoch_begin(epoch, logs)
+
+    def on_epoch_end(self, epoch, logs=None):
+        #save feature, feature center in cur_epoch model 
+        if epoch in self.model.config.initial_client_ouput_feat_epochs:
+            path = f"/Users/yangingdai/Downloads/GAN_Tensorflow-Project-Template/script_tmp/stage_1/{self.model.config.dataset}/{self.model.config.clients_name}/assigned_epoch/{epoch}"
+            if not os.path.exists(path):
+                os.makedirs(path)
+            model.save_weights(f"{path}/cp-{epoch:04d}.ckpt")
+            real_features = self.model.get_features(model.train_x)
+            np.save(f"{path}/real_features",real_features)
+            np.save(f"{path}/label",model.train_y)
+        for metric in model.metrics:
+            metric.reset_states()
+        for metric in model.compiled_metrics._metrics:
+            metric.reset_states()
+
+    def on_test_begin(self, logs=None):
+        for metric in model.metrics:
+            metric.reset_states()
+        for metric in model.compiled_metrics._metrics:
+            metric.reset_states()
+        
+class LossAndErrorPrintingCallback(tf.keras.callbacks.Callback):
+    def on_epoch_end(self, epoch, logs=None):
+        print()
+        print(f"Epoch: {epoch+1} ", end='')
+        for k,v in logs.items():
+            if 'val' not in k:
+                if "f1score" in k:
+                    print(f"{k} is {v[0]*100:.3f}, ", end='')
+                elif "loss" in k:
+                    print(f"\n {k} is {v:.3f}, ", end='')
+                else:
+                    print(f"{k} is {v*100:.3f}, ", end='')
+        print()
+
+    def on_test_end(self, logs=None):
+        print("test metrics:", end='')
+        for k,v in logs.items():
+            if "f1score" in k:
+                print(f"{k} is {v[0]*100:.3f}, ", end='')
+            elif "loss" in k:
+                print(f"\n {k} is {v:.3f}, ", end='')
+            else:
+                print(f"{k} is {v*100:.3f}, ", end='')
+        print()
 
 def create_feature_dataset(config, totoal_feature_data, train_data):
     '''
