@@ -336,11 +336,8 @@ class Trainer:
 
             with self.CLS_compare_test_acc_summary_writer.as_default():
                 tf.summary.scalar('compare_cls_accuracy_'+self.client_name, self.cls_global_test_accuracy.result(), step=cur_epoch)
-            
-            self.global_cls_acc_list.append(self.cls_global_test_accuracy.result())
-            self.local_cls_acc_list.append(self.cls_test_accuracy.result())
-            
-            if self.cls_global_test_accuracy.result() == max(self.global_cls_acc_list):
+                        
+            if cur_epoch == 0 or self.cls_global_test_accuracy.result() > max(self.global_cls_acc_list):
                 # self.cls.save_weights(checkpoint_global_path.format(epoch=cur_epoch))
                 del_list = os.listdir(checkpoint_dir+'global')
                 del_list2 = os.listdir(checkpoint_dir+'global_checkpoint')
@@ -357,7 +354,7 @@ class Trainer:
                 for col_num,col_value in enumerate([cur_epoch,  self.cls_global_test_accuracy.result(), self.cls_test_accuracy.result()]):
                     worksheet.cell(row=int(self.version_num)+2, column=col_num+11, value = float(col_value))
 
-            if self.cls_test_accuracy.result() == max(self.local_cls_acc_list):
+            if cur_epoch == 0 or self.cls_test_accuracy.result() > max(self.local_cls_acc_list):
                 # self.cls.save_weights(checkpoint_local_path.format(epoch=cur_epoch))
                 del_list = os.listdir(checkpoint_dir+'local')
                 del_list2 = os.listdir(checkpoint_dir+'local_checkpoint')
@@ -374,6 +371,9 @@ class Trainer:
                 #record metric in best local acc into excel
                 for col_num,col_value in enumerate([self.version_num, self.original_cls_loss_weight, self.cos_loss_weight, self.feat_loss_weight, cur_epoch, self.cls_train_accuracy.result(),self.cls_test_accuracy.result(), self.cls_global_test_accuracy.result(),self.cls_train_distance_loss.result()]):
                     worksheet.cell(row=int(self.version_num)+2, column=col_num+1, value = float(col_value))
+
+            self.global_cls_acc_list.append(self.cls_global_test_accuracy.result())
+            self.local_cls_acc_list.append(self.cls_test_accuracy.result())
 
             if cur_epoch in self.initial_client_ouput_feat_epochs:
                 path = f"tmp/{self.client_name}/{self.version_num}{suffix}/assigned_epoch/{cur_epoch}"
