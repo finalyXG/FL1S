@@ -87,7 +87,6 @@ def create_feature_dataset(config, totoal_feature_data, train_data):
     client_train_data_num = len(train_data)
     for layer_num in config.features_ouput_layer_list:
         feature_dataset = totoal_feature_data[layer_num]
-        feature, labels = zip(*feature_dataset)
         config.total_features_num = len(feature_dataset)
         if config.take_feature_ratio < 1 and indices is None:
             num_feature_keep = int(config.total_features_num * config.take_feature_ratio)
@@ -112,35 +111,14 @@ def create_feature_dataset(config, totoal_feature_data, train_data):
         train_data = np.array(train_data, dtype=object)[train_data_idx]
     return dataset_dict, train_data
 
-def count_features_central_distance(model, features_central, x, y):
-    feature = model.get_features(x)
-    accumulate_loss = 0
-    for k,v in feature.items():
-        for vector,label in zip(v,y): 
-            pre_vector = features_central[k][label.numpy()]
-            vector = tf.reshape(vector, [-1,])
-            pre_vector = tf.reshape(pre_vector, [-1,])
-            cos_sim = tf.tensordot(vector, pre_vector,axes=1)/(tf.linalg.norm(vector)*tf.linalg.norm(pre_vector)+0.001)
-            accumulate_loss += 1 - cos_sim
-    return accumulate_loss / len(y)
-
-def get_features_central(config, model, x, y):  
-    feature_output_layer_feature_avg_dic = {i:{} for i in config.features_ouput_layer_list}
-    for label in set(y):
-        label_index = np.where(y==label)
-        feature_list = model.get_features(x[label_index])
-        for k,v in feature_list.items():
-            avg_feature = tf.reduce_mean(v, axis=0) 
-            feature_output_layer_feature_avg_dic[k][label] = avg_feature
-    return feature_output_layer_feature_avg_dic
-
-def get_teacher_list(config, teacher):
+def get_teacher_list(config):
+    teacher = Classifier(config)
     teacher_list = []
     if config.teacher_1_model_path is not None:
         teacher.load_weights(tf.train.latest_checkpoint(config.teacher_1_model_path)).expect_partial()
         teacher_list.append(copy.deepcopy(teacher))
     if config.teacher_2_model_path is not None:
-        teacher.load_weights(tf.train.latest_checkpoint(config.teacher_1_model_path)).expect_partial()
+        teacher.load_weights(tf.train.latest_checkpoint(config.teacher_2_model_path)).expect_partial()
         teacher_list.append(copy.deepcopy(teacher))
     if config.teacher_3_model_path is not None:
         teacher.load_weights(tf.train.latest_checkpoint(config.teacher_3_model_path)).expect_partial()
@@ -159,15 +137,18 @@ def get_teacher_list(config, teacher):
         teacher_list = np.array(teacher_list)[teacher_idx]
     return teacher_list
 
-def main(model, train_data, test_data, global_test_data, config):
+def main(config, model, train_data, test_data, global_test_data):
     tf.random.set_seed(config.random_seed)
     np.random.seed(config.random_seed)
     random.seed(config.random_seed)
     #read data
+    if config.use_initial_model_weight:
+        model.load_weights(tf.train.latest_checkpoint(config.model_avg_weight_path)).expect_partial()
     if config.feature_center_path is not None and config.cos_loss_weight != float(0):
         pre_features_central = np.load(config.feature_center_path,allow_pickle=True).item()
     else:
         pre_features_central = None
+    model.set_pre_features_central(pre_features_central)
 
     if config.feature_path is not None:  # and config.feat_loss_weight != float(0)
         if config.feat_loss_weight == float(0):
@@ -176,307 +157,108 @@ def main(model, train_data, test_data, global_test_data, config):
         feature_data, train_data = create_feature_dataset(config, feature_data,  train_data)
     else:
         feature_data = None
-    teacher_list = get_teacher_list(config, copy.deepcopy(model))
+    model.set_feature_data(feature_data)
+    teacher_list = get_teacher_list(config)
+    model.set_teacher_list(teacher_list)
 
-    if config.use_initial_model_weight:
-        model.load_weights(tf.train.latest_checkpoint(config.model_avg_weight_path)).expect_partial()
     tf.random.set_seed(config.random_seed)
     np.random.seed(config.random_seed)
     random.seed(config.random_seed)
     train_x, train_y = zip(*train_data)
+    model.set_train_x_train_y(train_x, train_y)
+    class_rate = train_y.count(0)/train_y.count(1)
+    model.set_train_data_num(len(train_y))
     test_x, test_y = zip(*test_data)
     global_test_x, global_test_y = zip(*global_test_data)
-    class_rate = train_y.count(0)/train_y.count(1)
-    print("class_rate",class_rate)
     train_x, train_y = np.array(train_x),np.array(train_y)
     test_x, test_y = np.array(test_x),np.array(test_y)
     global_test_x, global_test_y = np.array(global_test_x), np.array(global_test_y)
 
-    train_data = tf.data.Dataset.from_tensor_slices((train_x,train_y)).shuffle(len(train_y))
+    train_data = tf.data.Dataset.from_tensor_slices((train_x,train_y))#.shuffle(len(train_y))  ,drop_remainder=True
+    model.set_train_data(train_data)
     test_data = tf.data.Dataset.from_tensor_slices(
-        (test_x, test_y)).shuffle(len(test_y)).batch(config.batch_size,drop_remainder=True)
+        (test_x, test_y)).batch(config.batch_size)
     global_test_data = tf.data.Dataset.from_tensor_slices(
-        (global_test_x,global_test_y)).shuffle(len(global_test_y)).batch(config.batch_size,drop_remainder=True)
+        (global_test_x,global_test_y)).batch(config.batch_size)
 
-    cls_train_loss = tf.keras.metrics.Mean(name='cls_train_loss')
-    cls_train_distance_loss = tf.keras.metrics.Mean(name='cls_train_distance_loss')
-    cls_train_classify_loss = tf.keras.metrics.Mean(name='cls_train_classify_loss')
-    cls_train_feature_loss = tf.keras.metrics.Mean(name='cls_train_feature_loss')
-    cls_test_loss = tf.keras.metrics.Mean(name='cls_test_loss')
-    cls_optimizer = tf.keras.optimizers.legacy.Adam(config.learning_rate)
-    
-    if config.dataset != "elliptic":
-        img_loss_fn_cls = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=False)
-        feature_loss_fn_cls = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=False)
-        cls_train_accuracy = tf.keras.metrics.SparseCategoricalAccuracy(name='cls_train_accuracy')
-        cls_test_accuracy = tf.keras.metrics.SparseCategoricalAccuracy(name='cls_test_accuracy')
-        cls_global_test_accuracy = tf.keras.metrics.SparseCategoricalAccuracy(name='cls_global_test_accuracy')
-    
+    if config.dataset == "elliptic":
+        model.set_loss_weight(class_rate)
+        metrics_list = [tf.keras.metrics.BinaryAccuracy(name='cls_accuracy'),
+                        tf.keras.metrics.Recall(name='recall'),
+                        tf.keras.metrics.Precision(name='precision'),
+                        tf.keras.metrics.F1Score(threshold=0.5, name='f1score')]
     else:
-        config.importance_rate = (config.train_data_importance_rate * class_rate).astype('float32')
-        print("importance_rate",config.importance_rate)
-        weights = tf.constant(config.importance_rate)
-        cls_train_accuracy = tf.keras.metrics.BinaryAccuracy(name='cls_train_accuracy')
-        cls_test_accuracy = tf.keras.metrics.BinaryAccuracy(name='cls_test_accuracy')
-        cls_global_test_accuracy = tf.keras.metrics.BinaryAccuracy(name='cls_global_test_accuracy')
+        metrics_list = [tf.keras.metrics.SparseCategoricalAccuracy(name='cls_accuracy')]
+    
+    if config.model_save_metrics == "acc":
+        monitor = 'val_cls_accuracy'
+    elif config.model_save_metrics == "f1":
+        monitor = 'val_f1score'
 
-    cls_train_elliptic_recall = tf.keras.metrics.Recall(name='elliptic_train_recall')
-    cls_train_elliptic_precision = tf.keras.metrics.Precision(name='elliptic_train_precision')
-    cls_train_elliptic_f1 = tf.keras.metrics.F1Score(threshold=0.5, name='elliptic_train_f1score')
+    model.compile(optimizer=tf.keras.optimizers.legacy.Adam(config.learning_rate),
+                    metrics= metrics_list,
+                    loss=tf.keras.metrics.Mean(name='loss'),
+                    run_eagerly = True)
+    checkpoint_filepath = f'/Users/yangingdai/Downloads/GAN_Tensorflow-Project-Template/script_tmp/stage_2/{config.dataset}/{config.clients_name}/checkpoint/checkpoint'
+    model_checkpoint_callback = tf.keras.callbacks.ModelCheckpoint(
+        filepath=checkpoint_filepath,
+        save_weights_only=True,
+        monitor=monitor,
+        mode='max',
+        save_best_only=True)
 
-    cls_test_elliptic_recall = tf.keras.metrics.Recall(name='elliptic_test_recall')
-    cls_test_elliptic_precision = tf.keras.metrics.Precision(name='elliptic_test_precision')
-    cls_test_elliptic_f1 = tf.keras.metrics.F1Score(threshold=0.5, name='elliptic_test_f1score')
+    if config.validation_data == "local_test_data":
+        validation_data = test_data
+    elif config.validation_data == "global_test_data":
+        validation_data = global_test_data
 
-    cls_global_test_elliptic_recall = tf.keras.metrics.Recall(name='elliptic_global_test_recall')
-    cls_global_test_elliptic_precision = tf.keras.metrics.Precision(name='elliptic_global_test_precision')
-    cls_global_test_elliptic_f1 = tf.keras.metrics.F1Score(threshold=0.5,name='elliptic_global_test_f1score')  
-
-    CLS_train_log_dir = 'logs/CLS_gradient_tape/train'
-    CLS_test_log_dir = 'logs/CLS_gradient_tape/test'
-    CLS_compare_test_log_dir = 'logs/CLS_gradient_tape/global'
-
-    CLS_train_summary_writer = tf.summary.create_file_writer(CLS_train_log_dir)
-    CLS_test_summary_writer = tf.summary.create_file_writer(CLS_test_log_dir)
-    CLS_compare_test_acc_summary_writer = tf.summary.create_file_writer(CLS_compare_test_log_dir)
-
-    local_cls_metrics_list = []
-    global_cls_metrics_list = []
-    global_cls_f1_list = []
-    checkpoint_dir = f'./script_tmp/stage_2/{config.dataset}/{config.clients_name}/cls_training_checkpoints/'
-    if not os.path.exists(checkpoint_dir):
-        os.makedirs(checkpoint_dir+'local')
-        os.makedirs(checkpoint_dir+'global')
     if feature_data is None:
         if len(train_y) >  config.batch_size:
-            batched_train_data = train_data.batch(config.batch_size,drop_remainder=True)
+            all_train_data = train_data.batch(config.batch_size,drop_remainder=True)
         else:
-            batched_train_data = train_data.batch(config.batch_size)
+            all_train_data = train_data.batch(config.batch_size)
     elif not config.update_feature_by_epoch:
         all_dataset = list(feature_data.values())
         all_dataset.append(train_data)
+        all_train_data  = tf.data.Dataset.zip(tuple(all_dataset)).batch(config.batch_size)
+    elif config.update_feature_by_epoch:
+        feature_dataset = {}
+        feature_idx = np.random.choice(range(model.config.total_features_num), size=model.train_data_num, replace=True)
+        for k, v in model.feature_data.items():
+            v = copy.deepcopy(np.array(v, dtype=object)[feature_idx])
+            feature, labels = zip(*v)
+            v = tf.data.Dataset.from_tensor_slices(
+                (np.array(feature), np.array(labels)))#.shuffle(len(labels))
+            feature_dataset[k] = v
+        all_dataset = list(feature_dataset.values())
+        all_dataset.append(model.train_data)
+        all_train_data  = tf.data.Dataset.zip(tuple(all_dataset)).batch(model.config.batch_size)   #,drop_remainder=True
+                
+    history = model.fit(all_train_data, epochs=config.cls_num_epochs, verbose=0, shuffle=False, validation_data=validation_data, callbacks=[CustomCallback(all_train_data), model_checkpoint_callback, LossAndErrorPrintingCallback() ])
+    test_score = model.evaluate(validation_data, callbacks=[LossAndErrorPrintingCallback(),CustomCallback()],return_dict=True, verbose=0)
 
-    #start training     
-    for cur_epoch in range(config.cls_num_epochs+1):
-        #train step
-        if feature_data:
-            if config.update_feature_by_epoch:
-                feature_dataset = {}
-                feature_idx = np.random.choice(range(config.total_features_num), size=len(train_data), replace=True)
-                for k, v in feature_data.items():
-                    v = copy.deepcopy(np.array(v, dtype=object)[feature_idx])
-                    feature, labels = zip(*v)
-                    v = tf.data.Dataset.from_tensor_slices(
-                        (np.array(feature), np.array(labels)))
-                    feature_dataset[k] = v
-                all_dataset = list(feature_dataset.values())
-                all_dataset.append(train_data)
-            if len(train_data) >  config.batch_size:
-                batched_train_data  = tf.data.Dataset.zip(tuple(all_dataset)).shuffle(len(train_data)).batch(config.batch_size,drop_remainder=True)
-            else:
-                batched_train_data  = tf.data.Dataset.zip(tuple(all_dataset)).shuffle(len(train_data)).batch(config.batch_size)
-        for batch_data in batched_train_data:
-            if type(batch_data[0]) != tuple:
-                x, y = batch_data
-            else:  #type(batch_data[0]) == tuple  means batch_data contains feature dataset
-                x, y = batch_data[-1]  #last element in batch_data is client train_data
-            with tf.GradientTape() as tape:
-                loss = 0.0
-                predictions = model(x, training=True)
-                for teacher in teacher_list:
-                    if config.soft_target_loss_weight != float(0):
-                        teacher_predictions = teacher(x, training=False)
-                        soft_targets = tf.nn.softmax(predictions/config.T)
-                        soft_prob = tf.nn.log_softmax(teacher_predictions/config.T)
-                        soft_targets_loss = -tf.math.reduce_sum(soft_targets * soft_prob) / soft_prob.shape[0] * (config.T**2)
-                        loss += config.soft_target_loss_weight * soft_targets_loss
-
-                    if config.hidden_rep_loss_weight != float(0):
-                        teacher_features = teacher.get_features(x)
-                        student_feature = model.get_features(x)
-                        for layer_num, feature in teacher_features.items():
-                            teacher_features = tf.reshape(feature, [-1,])
-                            student_feature = tf.reshape(student_feature[layer_num], [-1,])
-                            cos_sim = tf.tensordot(teacher_features, student_feature,axes=1)/(tf.linalg.norm(teacher_features)*tf.linalg.norm(student_feature)+0.001)
-                            hidden_rep_loss = 1 - cos_sim
-                            loss += config.hidden_rep_loss_weight * hidden_rep_loss
-
-                predictions = tf.nn.softmax(predictions)
-                if config.dataset == "elliptic":
-                    y_true = tf.expand_dims(y, axis=1)
-                    predictions = predictions[:,1]
-                    predictions = tf.expand_dims(predictions, axis=1)
-                    label_loss = tf.nn.weighted_cross_entropy_with_logits(labels=y_true, logits=predictions, pos_weight=weights)
-                    cls_train_elliptic_f1(y_true, predictions)
-                    cls_train_elliptic_precision(y_true, predictions)
-                    cls_train_elliptic_recall(y_true, predictions)
-                else: 
-                    label_loss = img_loss_fn_cls(y, predictions)
-                cls_train_classify_loss(label_loss)
-                loss += label_loss * config.original_cls_loss_weight
-
-                feature_loss, total_feature_loss = 0.0, 0.0
-                if pre_features_central is not None:
-                    distance_loss = count_features_central_distance(model, pre_features_central, x, y)
-                    cls_train_distance_loss(distance_loss)
-                    loss += (distance_loss*config.cos_loss_weight)
-                if type(batch_data[0]) == tuple and config.feat_loss_weight != float(0):
-                    for layer_num, (features, features_label) in zip(feature_data.keys(), batch_data[:-1]):
-                        feature_predictions = model.call_2(layer_num, features)   #get prediction through feature in layer_num output
-                        feature_predictions = tf.nn.softmax(feature_predictions)
-                        if config.dataset != "elliptic":
-                            feature_loss = feature_loss_fn_cls(features_label, feature_predictions)
-                        else:
-                            feature_true = tf.expand_dims(features_label, axis=1)
-                            feature_predictions = feature_predictions[:,1]
-                            feature_predictions = tf.expand_dims(feature_predictions, axis=1)
-                            feature_loss = tf.nn.weighted_cross_entropy_with_logits(labels=feature_true, logits=feature_predictions, pos_weight=weights)
-                        loss += (feature_loss*config.feat_loss_weight)
-                        total_feature_loss += feature_loss
-            gradients = tape.gradient(loss, model.trainable_variables)
-            cls_optimizer.apply_gradients(zip(gradients, model.trainable_variables))
-            cls_train_loss(loss)
-            cls_train_accuracy(y, predictions)
-
-        with CLS_train_summary_writer.as_default():
-            tf.summary.scalar('cls_loss_'+config.dataset, cls_train_loss.result(), step=cur_epoch) 
-            tf.summary.scalar('cls_accuracy_'+config.dataset, cls_train_accuracy.result(), step=cur_epoch)
-            tf.summary.scalar('cls_distance_loss_'+config.dataset, cls_train_distance_loss.result(), step=cur_epoch) 
-            tf.summary.scalar('cls_feature_loss_'+config.dataset, cls_train_feature_loss.result(), step=cur_epoch) 
-            tf.summary.scalar('cls_classify_loss_'+config.dataset, cls_train_classify_loss.result(), step=cur_epoch) 
-
-        #test step
-        for x,y in test_data:
-            predictions = model(x, training=False)
-            if config.dataset == "elliptic":
-                y_true = tf.expand_dims(y, axis=1)
-                predictions = tf.nn.softmax(predictions)
-                predictions = predictions[:,1]
-                predictions = tf.expand_dims(predictions, axis=1)
-                loss = tf.nn.weighted_cross_entropy_with_logits(labels=y_true, logits=predictions, pos_weight=weights)
-                cls_test_elliptic_f1(y_true, predictions)
-                cls_test_elliptic_precision(y_true, predictions)
-                cls_test_elliptic_recall(y_true, predictions)
-            else:
-                loss = img_loss_fn_cls(y, predictions)
-            cls_test_loss(loss)
-            cls_test_accuracy(y, predictions)
-        # recoed test result on tensorboard
-        with CLS_test_summary_writer.as_default():
-            tf.summary.scalar('cls_loss_'+config.dataset, cls_test_loss.result(), step=cur_epoch)
-            tf.summary.scalar('cls_accuracy_'+config.dataset, cls_test_accuracy.result(), step=cur_epoch)
-            tf.summary.scalar('compare_cls_accuracy_'+config.dataset, cls_test_accuracy.result(), step=cur_epoch)
-            
-        #global test
-        for (X_test, Y_test) in global_test_data:
-            predictions = model(X_test, training=False)
-            if config.dataset == "elliptic":
-                y_true = tf.expand_dims(Y_test, axis=1)
-                predictions = tf.nn.softmax(predictions)
-                predictions = predictions[:,1]
-                predictions = tf.expand_dims(predictions, axis=1)
-                cls_global_test_elliptic_f1(y_true, predictions)
-                cls_global_test_elliptic_precision(y_true, predictions)
-                cls_global_test_elliptic_recall(y_true, predictions)
-            cls_global_test_accuracy(Y_test, predictions)
-        
-        with CLS_compare_test_acc_summary_writer.as_default():
-            tf.summary.scalar('compare_cls_accuracy_'+config.dataset, cls_global_test_accuracy.result(), step=cur_epoch)
-            
-        #save feature, feature center in cur_epoch model
-        if cur_epoch in config.initial_client_ouput_feat_epochs:
-            path = f"script_tmp/stage_2/{config.dataset}/{config.client_name}/assigned_epoch/{cur_epoch}"
-            os.makedirs(path)
-            model.save_weights(f"{path}/cp-{cur_epoch:04d}.ckpt")
-            features_central = get_features_central(train_x,train_y)
-            real_features = model.get_features(train_x)
-            np.save(f"{path}/feature_center",features_central)
-            np.save(f"{path}/real_features",zip(real_features, train_y))
-            
-        #store metric result 
-        if config.model_save_metrics == "acc":
-            local_result = cls_test_accuracy.result()
-            global_result = cls_global_test_accuracy.result()
-        elif config.model_save_metrics == "f1":
-            local_result = cls_test_elliptic_f1.result()
-            global_result = cls_global_test_elliptic_f1.result()
-        local_cls_metrics_list.append(local_result)
-        global_cls_metrics_list.append(global_result)
-        # save model weight in best loval metrics
-        if local_result == max(local_cls_metrics_list):
-            del_list = os.listdir(checkpoint_dir+'local')
-            for f in del_list:
-                file_path = os.path.join(checkpoint_dir+'local', f)
-                if os.path.isfile(file_path):
-                    os.remove(file_path)
-            model.save_weights(f"{checkpoint_dir}/local/cp-{cur_epoch:04d}.ckpt")
-        # save model weight in best global metrics
-        if global_result == max(global_cls_metrics_list):
-            del_list = os.listdir(checkpoint_dir+'global')
-            for f in del_list:
-                file_path = os.path.join(checkpoint_dir+'global', f)
-                if os.path.isfile(file_path):
-                    os.remove(file_path)
-            model.save_weights(f"{checkpoint_dir}/global/cp-{cur_epoch:04d}.ckpt")
-
-        template = 'Epoch {}, Loss: {}, Accuracy: {}, Test Loss: {}, Test Accuracy: {}, Global Test Accuracy: {}'
-        print (template.format(cur_epoch+1,
-                                cls_train_loss.result(), 
-                                cls_train_accuracy.result()*100,
-                                cls_test_loss.result(), 
-                                cls_test_accuracy.result()*100,
-                                cls_global_test_accuracy.result()*100,))
-        if config.dataset == "elliptic":
-            with CLS_train_summary_writer.as_default():
-                tf.summary.scalar('cls_f1_'+config.dataset, cls_train_elliptic_f1.result()[0], step=cur_epoch) 
-            global_cls_f1_list.append(cls_global_test_elliptic_f1.result())
-            template = 'Train Recall: {}, Train Precision: {}, Train F1: {}, Test Recall: {}, Test Precision: {}, Test F1: {}, Global Test Recall: {}, Global Test Precision: {}, Global Test F1: {}'
-            print (template.format(cls_train_elliptic_recall.result()*100, 
-                                cls_train_elliptic_precision.result()*100,
-                                cls_train_elliptic_f1.result()*100,
-                                cls_test_elliptic_recall.result()*100, 
-                                cls_test_elliptic_precision.result()*100,
-                                cls_test_elliptic_f1.result()*100,
-                                cls_global_test_elliptic_recall.result()*100,
-                                cls_global_test_elliptic_precision.result()*100,
-                                cls_global_test_elliptic_f1.result()*100,))
-
-        # Reset metrics every epoch
-        cls_train_loss.reset_states()
-        cls_test_loss.reset_states()
-        cls_train_accuracy.reset_states()
-        cls_test_accuracy.reset_states()
-        cls_global_test_accuracy.reset_states()
-        cls_train_distance_loss.reset_states()
-        cls_train_feature_loss.reset_states()
-        cls_train_classify_loss.reset_states()
-        cls_test_elliptic_recall.reset_states()
-        cls_test_elliptic_f1.reset_states()
-        cls_test_elliptic_precision.reset_states()
-        cls_global_test_elliptic_f1.reset_states()
-        cls_global_test_elliptic_precision.reset_states()
-        cls_global_test_elliptic_recall.reset_states()
-        cls_train_elliptic_recall.reset_states()
-        cls_train_elliptic_f1.reset_states()
-        cls_train_elliptic_precision.reset_states()
-
-    best_global_metric = max(global_cls_metrics_list)
-    max_global_index = global_cls_metrics_list.index(best_global_metric)
-    print("max_global_f1_index",max_global_index,"best_global_f1",best_global_metric)
-    #load model in best local acc, get and save features
-    max_local_acc_model = tf.train.latest_checkpoint(checkpoint_dir+'local')
-    model.load_weights(max_local_acc_model)
-    features_centre = get_features_central(config, model, train_x,train_y)
-    np.save(f"script_tmp/stage_2/{config.dataset}/{config.clients_name}/features_centre",features_centre)
-    np.save(f"script_tmp/stage_2/{config.dataset}/{config.clients_name}/real_features",zip(model.get_features(train_x),train_y))
+    model.load_weights(checkpoint_filepath)
+    test_score = model.evaluate(validation_data, callbacks=[LossAndErrorPrintingCallback(),CustomCallback()],return_dict=True, verbose=0)
+    np.save(f"script_tmp/stage_1/{config.dataset}/{config.clients_name}/real_features",model.get_features(train_x))   #save feature as a dict
+    np.save(f"script_tmp/stage_1/{config.dataset}/{config.clients_name}/label",train_y)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     # General command line arguments for all models
     parser.add_argument(
+        "--stage",
+        type=int,
+        default=2
+    )
+    parser.add_argument(
         "--dataset",
         type=str,
         default="mnist"
+    )
+    parser.add_argument(
+        "--validation_data",
+        type=str,
+        default="local_test_data"
     )
     parser.add_argument(
         "--clients_name",
@@ -598,13 +380,10 @@ if __name__ == '__main__':
     print("use_dirichlet_split_data",args.use_dirichlet_split_data)
 
     data = DataGenerator(args)
-    if args.dataset != "elliptic":
-        model = Classifier(args)
-    else:
-        model = ClassifierElliptic(args)
     client_data = data.clients[args.clients_name]
     (train_data, test_data) = client_data
     global_test_data = zip(data.test_x, data.test_y)
+    model = Classifier(args)
     if not os.path.exists(f"script_tmp/stage_2/{args.dataset}/{args.clients_name}/"):
         os.makedirs(f"script_tmp/stage_2/{args.dataset}/{args.clients_name}/")
     record_hparams_file = open(f"./script_tmp/stage_2/{args.dataset}/{args.clients_name}/hparams_record.txt", "wt")
@@ -612,6 +391,5 @@ if __name__ == '__main__':
         record_hparams_file.write(f"{key}: {value}")
         record_hparams_file.write("\n")
     record_hparams_file.close()
-    main(model, train_data, test_data, global_test_data, args)
 
-# export PYTHONPATH=/Users/yangingdai/Downloads/GAN_Tensorflow-Project-Template; python script/main_stage_2.py --batch_size 32 --learning_rate 0.001 --alpha 10 --use_dirichlet_split_data 1 --cls_num_epochs 5 --initial_client 0 --num_clients 5 --feature_dim 50 --dataset elliptic --clients_name clients_1 --sample_ratio 0.1 --features_ouput_layer_list -2 --model_avg_weight_path script_tmp/server/elliptic/clients_1/model_avg --feature_path script_tmp/server/elliptic/clients_1/real_features.npy --feature_center_path script_tmp/server/elliptic/clients_1/feature_center.npy --use_initial_model_weight 1 --cos_loss_weight 1 --feat_loss_weight 1 --feature_match_train_data 1 --update_feature_by_epoch 1 --model_save_metrics f1 --teacher_1_model_path script_tmp/stage_1/elliptic/clients_1/cls_training_checkpoints/local --teacher_2_model_path script_tmp/stage_1/elliptic/clients_2/cls_training_checkpoints/local --teacher_3_model_path script_tmp/stage_1/elliptic/clients_3/cls_training_checkpoints/local --teacher_4_model_path script_tmp/stage_1/elliptic/clients_4/cls_training_checkpoints/local --teacher_5_model_path script_tmp/stage_1/elliptic/clients_5/cls_training_checkpoints/local
+    main(args, model, train_data, test_data, global_test_data)
