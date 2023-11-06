@@ -141,7 +141,7 @@ def main(config, model, train_data, test_data, global_test_data):
 
     model.load_weights(checkpoint_filepath)
     test_score = model.evaluate(validation_data, callbacks=[LossAndErrorPrintingCallback(),CustomCallback()],return_dict=True, verbose=0)
-    print(model.get_features(train_x)[-2][:2])
+
     np.save(f"script_tmp/stage_1/{config.dataset}/{config.clients_name}/real_features",model.get_features(train_x))   #save feature as a dict
     np.save(f"script_tmp/stage_1/{config.dataset}/{config.clients_name}/label",train_y)
 
@@ -293,33 +293,3 @@ if __name__ == '__main__':
         record_hparams_file.write("\n")
     record_hparams_file.close()
     main(args, model, train_data, test_data, global_test_data)
-
-    # #old code result
-    # if args.path == 1:
-    #     path = "tmp/clients_1/68/-2_layer_output"
-    # else:
-    #     path = "script_tmp/stage_1/elliptic/clients_1/-2_layer_output"
-    # label = np.load(f"{path}/train_y.npy",allow_pickle=True)
-    # feature = np.load(f"{path}/real_train_features.npy",allow_pickle=True)
-
-    # checkpoint_dir = f'tmp/clients_1/68/cls_training_checkpoints/local/'
-    # model.load_weights(tf.train.latest_checkpoint(checkpoint_dir)).expect_partial()
-    # model_feature = model.get_features(train_x)
-
-    # with open(f'{path}/features_central.pkl','rb') as fp: 
-    #     features_central = pickle.load(fp) #load features_central pre-saved
-    # #feature  label=  model_feature=   features_central
-    # print(feature)
-
-# export PYTHONPATH=/Users/yangingdai/Downloads/GAN_Tensorflow-Project-Template; python script/main_stage_1.py --batch_size 32 --learning_rate 0.001 --alpha 10 --use_dirichlet_split_data 1 --cls_num_epochs 80 --initial_client 1 --features_ouput_layer_list -2 --feature_dim 50 --num_clients 5 --dataset elliptic --clients_name clients_5 --sample_ratio 0.1 --whether_initial_feature_center 1  0.9651442
-# export PYTHONPATH=/Users/yangingdai/Downloads/GAN_Tensorflow-Project-Template; python script/main_stage_1.py --batch_size 32 --learning_rate 0.001 --alpha 10 --use_dirichlet_split_data 1 --cls_num_epochs 80 --initial_client 1 --features_ouput_layer_list -2 --feature_dim 50 --num_clients 5 --dataset elliptic --clients_name clients_4 --sample_ratio 0.1 --whether_initial_feature_center 1  0.9495192
-# export PYTHONPATH=/Users/yangingdai/Downloads/GAN_Tensorflow-Project-Template; python script/main_stage_1.py --batch_size 32 --learning_rate 0.001 --alpha 10 --use_dirichlet_split_data 1 --cls_num_epochs 80 --initial_client 1 --features_ouput_layer_list -2 --feature_dim 50 --num_clients 5 --dataset elliptic --clients_name clients_3 --sample_ratio 0.1 --whether_initial_feature_center 1  0.95402646
-# export PYTHONPATH=/Users/yangingdai/Downloads/GAN_Tensorflow-Project-Template; python script/main_stage_1.py --batch_size 32 --learning_rate 0.001 --alpha 10 --use_dirichlet_split_data 1 --cls_num_epochs 80 --initial_client 1 --features_ouput_layer_list -2 --feature_dim 50 --num_clients 5 --dataset elliptic --clients_name clients_2 --sample_ratio 0.1 --whether_initial_feature_center 1  0.96153843
-# export PYTHONPATH=/Users/yangingdai/Downloads/GAN_Tensorflow-Project-Template; python script/main_stage_1.py --batch_size 32 --learning_rate 0.001 --alpha 10 --use_dirichlet_split_data 1 --cls_num_epochs 80 --initial_client 1 --features_ouput_layer_list -2 --feature_dim 50 --num_clients 5 --dataset elliptic --clients_name clients_1 --sample_ratio 0.1 --whether_initial_feature_center 1  0.9609375
-# export PYTHONPATH=/Users/yangingdai/Downloads/GAN_Tensorflow-Project-Template; python mains/client.py --batch_size 32 --learning_rate 0.001 --alpha 10 --use_dirichlet_split_data 1 --cls_num_epochs 80 --initial_client 1 --features_ouput_layer_list -2 --feature_dim 50 --num_clients 5 --dataset elliptic --clients_name clients_1 --sample_ratio 0.1 --whether_initial_feature_center 1 
-
-# export PYTHONPATH=/Users/yangingdai/Downloads/GAN_Tensorflow-Project-Template; python mains/get_real_feature.py  --batch_size 32 --learning_rate 0.001 --alpha 10 --use_dirichlet_split_data 1 --cls_num_epochs 80 --initial_client 1 --features_ouput_layer_list -2 --feature_dim 50 --num_clients 5 --dataset elliptic --clients_name clients_5 --sample_ratio 0.1 --whether_initial_feature_center 1 --version_num 0
-# export PYTHONPATH=/Users/yangingdai/Downloads/GAN_Tensorflow-Project-Template; python mains/get_real_feature.py  --batch_size 32 --learning_rate 0.001 --alpha 10 --use_dirichlet_split_data 1 --cls_num_epochs 80 --initial_client 1 --features_ouput_layer_list -2 --feature_dim 50 --num_clients 5 --dataset elliptic --clients_name clients_4 --sample_ratio 0.1 --whether_initial_feature_center 1 --version_num 0
-# export PYTHONPATH=/Users/yangingdai/Downloads/GAN_Tensorflow-Project-Template; python mains/get_real_feature.py  --batch_size 32 --learning_rate 0.001 --alpha 10 --use_dirichlet_split_data 1 --cls_num_epochs 80 --initial_client 1 --features_ouput_layer_list -2 --feature_dim 50 --num_clients 5 --dataset elliptic --clients_name clients_3 --sample_ratio 0.1 --whether_initial_feature_center 1 --version_num 0
-# export PYTHONPATH=/Users/yangingdai/Downloads/GAN_Tensorflow-Project-Template; python mains/get_real_feature.py  --batch_size 32 --learning_rate 0.001 --alpha 10 --use_dirichlet_split_data 1 --cls_num_epochs 80 --initial_client 1 --features_ouput_layer_list -2 --feature_dim 50 --num_clients 5 --dataset elliptic --clients_name clients_2 --sample_ratio 0.1 --whether_initial_feature_center 1 --version_num 0
-# export PYTHONPATH=/Users/yangingdai/Downloads/GAN_Tensorflow-Project-Template; python mains/get_real_feature.py  --batch_size 32 --learning_rate 0.001 --alpha 10 --use_dirichlet_split_data 1 --cls_num_epochs 80 --initial_client 1 --features_ouput_layer_list -2 --feature_dim 50 --num_clients 5 --dataset elliptic --clients_name clients_1 --sample_ratio 0.1 --whether_initial_feature_center 1 --version_num 0

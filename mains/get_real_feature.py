@@ -24,20 +24,9 @@ def main(config):
     train_x,train_y = np.array(train_x),np.array(train_y)
 
     real_train_features = cls.get_features(train_x)
-    # if not os.path.exists(f"{path}/save/"):
-    #     os.makedirs(f"{path}/save/")
-    # np.save(f"{path}/save/real_train_features",real_train_features)
-    # np.save(f"{path}/save/train_y",train_y)
     for k,v in real_train_features.items():
         np.save(f"{path}/{k}_layer_output/real_train_features",v)
         np.save(f"{path}/{k}_layer_output/train_y",train_y)
-    # pre_feature  = np.load(f"{path}/real_features.npy",allow_pickle=True)
-    # pre_label  = np.load(f"{path}/features_label.npy",allow_pickle=True)
-    # print("pre_feature",pre_feature[0][:3])
-    # print("pre_label",pre_label)
-    # print("-------")
-    # print("real_features",real_train_features[0][:3])
-    # print("train_y",train_y)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
