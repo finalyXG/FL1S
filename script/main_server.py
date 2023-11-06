@@ -124,6 +124,11 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     # General command line arguments for all models
     parser.add_argument(
+        "--stage",
+        type=int,
+        default=0
+    )
+    parser.add_argument(
         "--dataset",
         type=str,
         default="mnist"
