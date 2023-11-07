@@ -150,9 +150,7 @@ def main(config, model, train_data, test_data, global_test_data):
         pre_features_central = None
     model.set_pre_features_central(pre_features_central)
 
-    if config.feature_path is not None:  # and config.feat_loss_weight != float(0)
-        if config.feat_loss_weight == float(0):
-            config.feature_match_train_data = 1
+    if config.feature_path is not None and config.feat_loss_weight != float(0):
         feature_data = np.load(config.feature_path,allow_pickle=True).item()  #dict, key:feature_layer num, value: corresponding feature data
         feature_data, train_data = create_feature_dataset(config, feature_data,  train_data)
     else:

@@ -57,7 +57,8 @@ class Classifier(tf.keras.Model):
 
     def set_feature_data(self, feature_data):
         self.feature_data = NoDependency(feature_data)
-        self.feature_data_keys = feature_data.keys()
+        if type(feature_data) == dict:
+            self.feature_data_keys = feature_data.keys()
 
     def set_train_data_num(self, train_data_num):
         self.train_data_num = train_data_num
