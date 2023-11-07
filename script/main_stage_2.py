@@ -24,7 +24,7 @@ class CustomCallback(tf.keras.callbacks.Callback):
                     v = copy.deepcopy(np.array(v, dtype=object)[feature_idx])
                     feature, labels = zip(*v)
                     v = tf.data.Dataset.from_tensor_slices(
-                        (np.array(feature), np.array(labels)))#.shuffle(len(labels))
+                        (np.array(feature), np.array(labels))).shuffle(len(labels))
                     feature_dataset[k] = v
                 all_dataset = list(feature_dataset.values())
                 all_dataset.append(model.train_data)
@@ -60,22 +60,22 @@ class LossAndErrorPrintingCallback(tf.keras.callbacks.Callback):
         for k,v in logs.items():
             if 'val' not in k:
                 if "f1score" in k:
-                    print(f"{k} is {v[0]*100:.3f}, ", end='')
+                    print(f"{k} is {v[0]:.5f}, ", end='')
                 elif "loss" in k:
-                    print(f"\n {k} is {v:.3f}, ", end='')
+                    print(f"\n {k} is {v:.5f}, ", end='')
                 else:
-                    print(f"{k} is {v*100:.3f}, ", end='')
+                    print(f"{k} is {v:.5f}, ", end='')
         print()
 
     def on_test_end(self, logs=None):
         print("test metrics:", end='')
         for k,v in logs.items():
             if "f1score" in k:
-                print(f"{k} is {v[0]*100:.3f}, ", end='')
+                print(f"{k} is {v[0]:.5f}, ", end='')
             elif "loss" in k:
-                print(f"\n {k} is {v:.3f}, ", end='')
+                print(f"\n {k} is {v:.5f}, ", end='')
             else:
-                print(f"{k} is {v*100:.3f}, ", end='')
+                print(f"{k} is {v:.5f}, ", end='')
         print()
 
 def create_feature_dataset(config, totoal_feature_data, train_data):
@@ -234,7 +234,7 @@ def main(config, model, train_data, test_data, global_test_data):
         all_dataset.append(model.train_data)
         all_train_data  = tf.data.Dataset.zip(tuple(all_dataset)).batch(model.config.batch_size)   #,drop_remainder=True
                 
-    history = model.fit(all_train_data, epochs=config.cls_num_epochs, verbose=0, shuffle=False, validation_data=validation_data, callbacks=[CustomCallback(all_train_data), model_checkpoint_callback, LossAndErrorPrintingCallback() ])
+    history = model.fit(all_train_data, epochs=config.cls_num_epochs, verbose=0, shuffle=True, validation_data=validation_data, callbacks=[CustomCallback(all_train_data), model_checkpoint_callback, LossAndErrorPrintingCallback() ])
     test_score = model.evaluate(validation_data, callbacks=[LossAndErrorPrintingCallback(),CustomCallback()],return_dict=True, verbose=0)
 
     model.load_weights(checkpoint_filepath)

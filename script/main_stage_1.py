@@ -96,10 +96,10 @@ def main(config, model, train_data, test_data, global_test_data):
     global_test_x, global_test_y = np.array(global_test_x),np.array(global_test_y)
     if len(train_y) >  config.batch_size:
         train_data = tf.data.Dataset.from_tensor_slices(
-            (train_x,train_y)).batch(config.batch_size,drop_remainder=True)
+            (train_x,train_y)).shuffle(len(train_y)).batch(config.batch_size,drop_remainder=True)
     else:
         train_data = tf.data.Dataset.from_tensor_slices(
-            (train_x,train_y)).batch(config.batch_size)   #shuffle(len(train_y))
+            (train_x,train_y)).shuffle(len(train_y)).batch(config.batch_size)   #shuffle(len(train_y))
     test_data = tf.data.Dataset.from_tensor_slices(
         (test_x, test_y)).batch(config.batch_size)
     global_test_data = tf.data.Dataset.from_tensor_slices(
@@ -136,7 +136,7 @@ def main(config, model, train_data, test_data, global_test_data):
         validation_data = test_data
     elif config.validation_data == "global_test_data":
         validation_data = global_test_data
-    history = model.fit(train_data, epochs=config.cls_num_epochs, verbose=0, shuffle=False, validation_data=validation_data, callbacks=[CustomCallback(), model_checkpoint_callback, LossAndErrorPrintingCallback() ])
+    history = model.fit(train_data, epochs=config.cls_num_epochs, verbose=0, shuffle=True, validation_data=validation_data, callbacks=[CustomCallback(), model_checkpoint_callback, LossAndErrorPrintingCallback() ])
     test_score = model.evaluate(validation_data, callbacks=[LossAndErrorPrintingCallback(),CustomCallback()],return_dict=True, verbose=0)
 
     model.load_weights(checkpoint_filepath)
