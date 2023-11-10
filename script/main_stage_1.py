@@ -10,7 +10,7 @@ import openpyxl
 import copy
 import time, datetime
 from data_loader.data_generator import DataGenerator
-from script.model import Classifier
+from script.model import Classifier, GAN
 class CustomCallback(tf.keras.callbacks.Callback):
     def on_epoch_end(self, epoch, logs=None):
         #save feature, feature center in cur_epoch model 
@@ -32,7 +32,19 @@ class CustomCallback(tf.keras.callbacks.Callback):
             metric.reset_states()
         for metric in model.compiled_metrics._metrics:
             metric.reset_states()
-        
+class GANCallback(tf.keras.callbacks.Callback):
+    def on_epoch_end(self, epoch, logs=None):
+        for metric in model.metrics:
+            metric.reset_states()
+        for metric in model.compiled_metrics._metrics:
+            metric.reset_states()
+
+    def on_test_begin(self, logs=None):
+        for metric in model.metrics:
+            metric.reset_states()
+        for metric in model.compiled_metrics._metrics:
+            metric.reset_states()
+
 class LossAndErrorPrintingCallback(tf.keras.callbacks.Callback):
     def on_epoch_end(self, epoch, logs=None):
         print()
@@ -145,6 +157,64 @@ def main(config, model, train_data, test_data, global_test_data):
     np.save(f"script_tmp/stage_1/{config.dataset}/{config.clients_name}/real_features",model.get_features(train_x))   #save feature as a dict
     np.save(f"script_tmp/stage_1/{config.dataset}/{config.clients_name}/label",train_y)
 
+    #using GAN
+    if config.whether_generate_fake_feature:
+        if config.dataset == "elliptic":
+            label_dim = 1
+            loss_fn_categorical = tf.keras.losses.BinaryCrossentropy(from_logits=True)
+        else:
+            label_dim = config.num_classes
+            loss_fn_categorical = tf.keras.losses.CategoricalCrossentropy(from_logits=True)
+        discriminator = tf.keras.Sequential(
+            [
+                tf.keras.layers.Input(shape=(config.feature_dim)),
+                tf.keras.layers.Flatten(), 
+                tf.keras.layers.Dense(512, activation=tf.nn.leaky_relu ),
+                tf.keras.layers.Dense(256, activation=tf.nn.leaky_relu ),
+                tf.keras.layers.Dense(128, activation=tf.nn.leaky_relu ),
+                tf.keras.layers.Dense(1+label_dim),
+            ],
+            name="discriminator",
+        )
+
+        # Create the generator
+        generator = tf.keras.Sequential(
+            [
+                tf.keras.layers.Input(shape=(config.latent_dim+1,)),
+                tf.keras.layers.Dense(32, activation=tf.nn.relu),
+                tf.keras.layers.Dense(64, activation=tf.nn.relu),
+                tf.keras.layers.Dense(128, activation=tf.nn.relu),
+                tf.keras.layers.Dense(config.feature_dim),
+            ],
+            name="generator",
+        )
+        gan = GAN(config=config, discriminator=discriminator, generator=generator, model = model)
+        gan.set_train_y(train_y)
+
+        gan.compile(
+            d_optimizer=tf.keras.optimizers.legacy.Adam(learning_rate=config.learning_rate),
+            g_optimizer=tf.keras.optimizers.legacy.Adam(learning_rate=config.learning_rate),
+            loss_fn_binary= tf.keras.losses.BinaryCrossentropy(from_logits=True),
+            loss_fn_categorical = loss_fn_categorical,
+            binary_accuracy = tf.keras.metrics.BinaryAccuracy(name='disc_binary_accuracy'), 
+            categorical_accuracy = tf.keras.metrics.CategoricalAccuracy(name='disc_categorical_accuracy'),
+            run_eagerly = True
+        )
+        gan_checkpoint_filepath = f'/Users/yangingdai/Downloads/GAN_Tensorflow-Project-Template/script_tmp/stage_1/{config.dataset}/{config.clients_name}/gan_checkpoint/checkpoint'
+        gan_checkpoint_callback = tf.keras.callbacks.ModelCheckpoint(
+            filepath=gan_checkpoint_filepath,
+            save_weights_only=True,
+            monitor='val_g_loss',
+            mode='min',
+            save_best_only=True)
+        gan.fit(train_data, epochs=config.GAN_num_epochs, verbose=0, shuffle=True, validation_data=validation_data, callbacks=[GANCallback(), gan_checkpoint_callback, LossAndErrorPrintingCallback()])
+        gan.evaluate(validation_data, callbacks=[LossAndErrorPrintingCallback(),GANCallback()],return_dict=True, verbose=0)
+
+        gan.load_weights(gan_checkpoint_filepath)
+        gan.evaluate(validation_data, callbacks=[LossAndErrorPrintingCallback(),GANCallback()],return_dict=True, verbose=0)
+        fake_features = gan.generate_fake_features()
+        np.save(f"script_tmp/stage_1/{config.dataset}/{config.clients_name}/fake_features",fake_features)   #save feature as a dict
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     # General command line arguments for all models
@@ -172,6 +242,11 @@ if __name__ == '__main__':
         "--validation_data",
         type=str,
         default="local_test_data"
+    )
+    parser.add_argument(
+        "--whether_generate_fake_feature",
+        type=int,
+        default=0
     )
     parser.add_argument(
         "--clients_name",
