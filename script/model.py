@@ -281,3 +281,195 @@ class Classifier(tf.keras.Model):
                 avg_feature = tf.reduce_mean(v, axis=0) 
                 feature_output_layer_feature_avg_dic[k][label] = avg_feature
         return feature_output_layer_feature_avg_dic
+    
+class GAN(tf.keras.Model):
+    def __init__(self, config, discriminator, generator, model):
+        super().__init__()
+        self.config = config
+        self.discriminator = discriminator
+        self.generator = generator
+        self.cls = model
+        self.latent_dim = config.latent_dim   #generator input dim
+        self.d_loss_tracker = tf.keras.metrics.Mean(name="d_loss")
+        self.g_loss_tracker = tf.keras.metrics.Mean(name="g_loss")
+
+    def compile(self, d_optimizer, g_optimizer, loss_fn_binary, loss_fn_categorical, binary_accuracy, categorical_accuracy, run_eagerly):
+        super().compile(run_eagerly = run_eagerly)
+        self.d_optimizer = d_optimizer
+        self.g_optimizer = g_optimizer
+        self.loss_fn_binary = loss_fn_binary
+        self.loss_fn_categorical = loss_fn_categorical
+        self.binary_accuracy = binary_accuracy
+        self.categorical_accuracy = categorical_accuracy
+    
+    def set_train_y(self, train_y):
+        self.train_y = train_y
+
+    def generate_fake_features(self):
+        noise = tf.random.normal([len(self.train_y), self.latent_dim])
+        y = tf.expand_dims(self.train_y, axis=1)
+        seed = tf.concat(
+            [noise, y], axis=1
+            )
+        fake_features = self.generator(seed)
+        return fake_features
+    
+    #features_version
+    def gradient_penalty(self, real_features, generated_features):
+        """ features_version
+        Calculates the gradient penalty.
+
+        This loss is calculated on an interpolated image
+        and added to the discriminator loss.
+        """
+        # Get the interpolated image
+        alpha = tf.random.normal([self.config.batch_size, 1], 0.0, 1.0)
+        diff = generated_features - real_features
+        interpolated = real_features + alpha * diff
+        with tf.GradientTape() as gp_tape:
+            gp_tape.watch(interpolated)
+            # 1. Get the discriminator output for this interpolated image.
+            pred = self.discriminator(interpolated, training=True)
+            pred, _ = pred[:, :1], pred[:, 1:]
+
+        # 2. Calculate the gradients w.r.t to this interpolated image.
+        grads = gp_tape.gradient(pred, [interpolated])[0]
+        # 3. Calculate the norm of the gradients.
+        norm = tf.sqrt(tf.reduce_sum(tf.square(grads), axis=[1]))
+        gp = tf.reduce_mean((norm - 1.0) ** 2)
+        return gp
+
+    @tf.function
+    # Modify Train step for GAN
+    def train_step(self,data):
+        x, y = data
+        y = tf.expand_dims(y, axis=1)
+        #use cls model to generate real features
+        real_features = self.cls.get_features(x)
+        if len(real_features) == 1:
+            real_features = real_features[self.config.features_ouput_layer_list[0]]
+        # Train the discriminator first.
+        for i in range(self.config.discriminator_extra_steps):
+            noise = tf.random.normal([self.config.batch_size, self.latent_dim])
+            random_vector_labels = tf.concat(
+            [noise, y], axis=1
+            )
+            with tf.GradientTape() as disc_tape:
+                generated_features = self.generator(random_vector_labels, training=True)
+                # Combine them with real images. Note that we are concatenating the labels
+                # with these images here.
+                combined_features = tf.concat(
+                    [real_features, generated_features], axis=0
+                )
+
+                # Assemble labels discriminating real from fake images.
+                binary_labels = tf.concat(  
+                    [tf.ones((self.config.batch_size, 1)), tf.zeros((self.config.batch_size, 1))], axis=0
+                )
+
+                # Add random noise to the labels - important trick!
+                # labels += 0.05 * tf.random.uniform(tf.shape(labels))
+                
+                category_label = tf.concat(  
+                    [y, y], axis=0
+                )
+            
+                predictions = self.discriminator(combined_features, training=True)
+                binary_predictions, category_predictions = predictions[:, :1], predictions[:, 1:]
+                disc_binary_cost = self.loss_fn_binary(binary_labels,binary_predictions)
+                disc_categorical_cost = self.loss_fn_categorical(category_label, category_predictions)
+    
+                # Calculate the gradient penalty
+                gp = self.gradient_penalty(real_features, generated_features)    
+                # Add the gradient penalty to the original discriminator loss
+                disc_loss = disc_binary_cost +  disc_categorical_cost  +  gp * self.config.gp_weight
+
+            # Calculate Gradient
+            grad_disc = disc_tape.gradient(disc_loss, self.discriminator.trainable_variables)
+            self.d_optimizer.apply_gradients(zip(grad_disc, self.discriminator.trainable_variables))
+
+        # Train the generator
+        # Get the latent vector
+        noise = tf.random.normal([self.config.batch_size, self.latent_dim])
+        random_vector_labels = tf.concat(
+            [noise, y], axis=1
+            )
+        # Assemble labels that say "all real images". 
+        misleading_labels = tf.ones((self.config.batch_size, 1))
+        with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
+            generated_features = self.generator(random_vector_labels, training=True)
+            
+            fake_predictions = self.discriminator(generated_features, training=True)
+            binary_fake_predictions, category_fake_predictions = fake_predictions[:, :1], fake_predictions[:, 1:]
+
+            gen_binary_loss = self.loss_fn_binary(misleading_labels, binary_fake_predictions) #lead classify to 
+            gen_categorical_loss  = self.loss_fn_categorical(y, category_fake_predictions) 
+            gen_loss = gen_binary_loss + gen_categorical_loss
+
+        grad_gen = gen_tape.gradient(gen_loss, self.generator.trainable_variables)
+        self.g_optimizer.apply_gradients(zip(grad_gen, self.generator.trainable_variables))
+
+        # Update metrics and return their value.
+        self.d_loss_tracker.update_state(disc_loss)
+        self.g_loss_tracker.update_state(gen_loss)
+        self.binary_accuracy.update_state(binary_labels, binary_predictions)
+        self.categorical_accuracy.update_state(category_label, category_predictions)
+        return {
+            "d_loss": self.d_loss_tracker.result(),
+            "g_loss": self.g_loss_tracker.result(),
+            "binary_accuracy": self.binary_accuracy.result(),
+            "categorical_accuracy": self.categorical_accuracy.result(),
+        }
+    
+    @tf.function
+    def test_step(self,data):
+        x, y = data
+        real_features = self.cls.get_features(x)
+        if len(real_features) == 1:
+            real_features = real_features[self.config.features_ouput_layer_list[0]]
+        noise = tf.random.normal([self.config.batch_size, self.latent_dim])
+        y = tf.expand_dims(y, axis=1)
+        random_vector_labels = tf.concat(
+            [noise, y], axis=1
+            )
+
+        generated_features = self.generator(random_vector_labels, training=False)
+        combined_features = tf.concat(
+            [real_features, generated_features], axis=0
+        )
+
+        # Assemble labels discriminating real from fake images.
+        binary_labels = tf.concat(  #set real img classify to zero
+            [tf.ones((self.config.batch_size, 1)), tf.zeros((self.config.batch_size, 1))], axis=0
+        )
+        misleading_labels = tf.ones((self.config.batch_size, 1))
+
+        category_label = tf.concat(  
+                    [y, y], axis=0
+                )
+        predictions = self.discriminator(combined_features, training=False)
+        binary_predictions, category_predictions = predictions[:, :1], predictions[:, 1:]
+        
+        #using fake img's output to count generator loss
+        gen_binary_loss = self.loss_fn_binary(misleading_labels,binary_predictions[self.config.batch_size:])
+        gen_categorical_loss  = self.loss_fn_categorical(y, category_predictions[self.config.batch_size:]) 
+        gen_loss = gen_binary_loss + gen_categorical_loss
+        
+        disc_binary_cost = self.loss_fn_binary(binary_labels, binary_predictions)
+        disc_categorical_cost = self.loss_fn_categorical(category_label, category_predictions)
+        # Calculate the gradient penalty
+        gp = self.gradient_penalty(real_features, generated_features)     
+        # Add the gradient penalty to the original discriminator loss
+        disc_loss = disc_binary_cost + disc_categorical_cost + gp * self.config.gp_weight  
+        
+        # Update metrics and return their value.
+        self.d_loss_tracker.update_state(disc_loss)
+        self.g_loss_tracker.update_state(gen_loss)
+        self.binary_accuracy.update_state(binary_labels, binary_predictions)
+        self.categorical_accuracy.update_state(category_label, category_predictions)
+        return {
+            "d_loss": self.d_loss_tracker.result(),
+            "g_loss": self.g_loss_tracker.result(),
+            "binary_accuracy": self.binary_accuracy.result(),
+            "categorical_accuracy": self.categorical_accuracy.result(),
+        }
