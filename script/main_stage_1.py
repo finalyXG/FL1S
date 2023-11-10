@@ -159,6 +159,16 @@ if __name__ == '__main__':
         default="mnist"
     )
     parser.add_argument(
+        "--input_feature_ratio",
+        type=float,
+        default=1.0
+    )
+    parser.add_argument(
+        "--null_feature_num",
+        type=int,
+        default=0
+    )
+    parser.add_argument(
         "--validation_data",
         type=str,
         default="local_test_data"

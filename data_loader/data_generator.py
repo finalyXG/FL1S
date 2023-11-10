@@ -76,6 +76,18 @@ class DataGenerator:
             config.elliptic_initial_bias = np.log([pos/neg])
             self.input, self.y = np.array(train_data.drop(["class","txId",'Time step'],axis=1)).astype('float32'), np.array(train_data["class"]).astype('float32')
             self.test_x, self.test_y = np.array(test_data.drop(["class","txId",'Time step'],axis=1)).astype('float32'), np.array(test_data["class"]).astype('float32')
+            if self.config.input_feature_ratio < float(1):
+                mute_feature_num = int(self.input.shape[1]*(1-self.config.input_feature_ratio))
+                np.random.seed(int(self.config.clients_name.split("_")[1]))
+                feature_index = np.random.choice(range(self.input.shape[1]), size=mute_feature_num, replace=False)
+                feature_index = np.sort(feature_index)
+                print("mute_feature_num:",mute_feature_num)
+                self.input[:,feature_index] = 0
+                self.test_x[:,feature_index] = 0
+            print("null_feature_num:",self.config.null_feature_num)
+            for i in range(self.config.null_feature_num):
+                self.input = np.column_stack((self.input, [0]*self.input.shape[0]))
+                self.test_x = np.column_stack((self.test_x, [0]*self.test_x.shape[0]))
             config.input_feature_size = self.input.shape[-1]
         else:
             raise NotImplementedError(
