@@ -52,22 +52,18 @@ class LossAndErrorPrintingCallback(tf.keras.callbacks.Callback):
         for k,v in logs.items():
             if 'val' not in k:
                 if "f1score" in k:
-                    print(f"{k} is {v[0]*100:.3f}, ", end='')
-                elif "loss" in k:
-                    print(f"\n {k} is {v:.3f}, ", end='')
+                    print(f"{k} is {v[0]:.5f}, ", end='')
                 else:
-                    print(f"{k} is {v*100:.3f}, ", end='')
+                    print(f"{k} is {v:.5f}, ", end='')
         print()
 
     def on_test_end(self, logs=None):
         print("test metrics:", end='')
         for k,v in logs.items():
             if "f1score" in k:
-                print(f"{k} is {v[0]*100:.3f}, ", end='')
-            elif "loss" in k:
-                print(f"\n {k} is {v:.3f}, ", end='')
+                print(f"{k} is {v[0]:.5f}, ", end='')
             else:
-                print(f"{k} is {v*100:.3f}, ", end='')
+                print(f"{k} is {v:.5f}, ", end='')
         print()
 
 def generate_initial_feature_center(config):
@@ -113,9 +109,9 @@ def main(config, model, train_data, test_data, global_test_data):
         train_data = tf.data.Dataset.from_tensor_slices(
             (train_x,train_y)).shuffle(len(train_y)).batch(config.batch_size)   #shuffle(len(train_y))
     test_data = tf.data.Dataset.from_tensor_slices(
-        (test_x, test_y)).batch(config.batch_size)
+        (test_x, test_y)).batch(config.batch_size,drop_remainder=True)
     global_test_data = tf.data.Dataset.from_tensor_slices(
-        (global_test_x, global_test_y)).batch(config.batch_size)  
+        (global_test_x, global_test_y)).batch(config.batch_size,drop_remainder=True)  
         
     if config.dataset == "elliptic":
         model.set_loss_weight(class_rate)
