@@ -76,16 +76,27 @@ class DataGenerator:
             config.elliptic_initial_bias = np.log([pos/neg])
             self.input, self.y = np.array(train_data.drop(["class","txId",'Time step'],axis=1)).astype('float32'), np.array(train_data["class"]).astype('float32')
             self.test_x, self.test_y = np.array(test_data.drop(["class","txId",'Time step'],axis=1)).astype('float32'), np.array(test_data["class"]).astype('float32')
-            if self.config.input_feature_ratio < float(1):
-                mute_feature_num = int(self.input.shape[1]*(1-self.config.input_feature_ratio))
-                np.random.seed(int(self.config.clients_name.split("_")[1]))
-                feature_index = np.random.choice(range(self.input.shape[1]), size=mute_feature_num, replace=False)
-                feature_index = np.sort(feature_index)
-                print("mute_feature_num:",mute_feature_num)
-                self.input[:,feature_index] = 0
-                self.test_x[:,feature_index] = 0
-            print("null_feature_num:",self.config.null_feature_num)
-            for i in range(self.config.null_feature_num):
+            if self.config.input_feature_overlap_num < self.input.shape[1]:
+                overlap_feature_index = range(self.config.input_feature_overlap_num)#np.random.choice(range(self.input.shape[1]), size=self.config.input_feature_overlap_num, replace=False)
+                total_no_overlap_feature_index = range(self.config.input_feature_overlap_num, self.input.shape[1])#list(set(range(self.input.shape[1])) - set(overlap_feature_index))
+                # clients_no_overlap_feature_num_list = np.random.randint(int(hight_range), size=self.config.num_clients)
+                self.config.clients_zero_feature_index = {}
+                if self.config.input_feature_no_overlap_num != 0:
+                    clients_no_overlap_feature_num_list = [self.config.input_feature_no_overlap_num] * self.config.num_clients
+                    print("clients_no_overlap_feature_num_list:",clients_no_overlap_feature_num_list)
+                    for i in range(self.config.num_clients):
+                        client_i_no_overlap_feature_index = np.random.choice(total_no_overlap_feature_index, size=clients_no_overlap_feature_num_list[i], replace=False)
+                        print(i,"client_i_no_overlap_feature_index",client_i_no_overlap_feature_index)
+                        clients_feature_index = list(client_i_no_overlap_feature_index) + list(overlap_feature_index)
+                        self.config.clients_zero_feature_index[f"clients_%d"%(i+1)] = list(set(range(self.input.shape[1])) - set(clients_feature_index))
+                        total_no_overlap_feature_index = list(set(total_no_overlap_feature_index) - set(client_i_no_overlap_feature_index))
+                        np.save(f"script_tmp/stage_1/{self.config.dataset}/clients_{i+1}/zero_feature_index",self.config.clients_zero_feature_index[f"clients_%d"%(i+1)])  
+                else:
+                    self.config.clients_zero_feature_index = total_no_overlap_feature_index
+                    np.save(f"script_tmp/stage_1/{self.config.dataset}/zero_feature_index",total_no_overlap_feature_index)  
+
+            print("extend_null_feature_num:",self.config.extend_null_feature_num)
+            for i in range(self.config.extend_null_feature_num):
                 self.input = np.column_stack((self.input, [0]*self.input.shape[0]))
                 self.test_x = np.column_stack((self.test_x, [0]*self.test_x.shape[0]))
             config.input_feature_size = self.input.shape[-1]

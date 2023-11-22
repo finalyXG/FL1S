@@ -254,12 +254,17 @@ if __name__ == '__main__':
         default="mnist"
     )
     parser.add_argument(
-        "--input_feature_ratio",
-        type=float,
-        default=1.0
+        "--input_feature_overlap_num",
+        type=int,
+        default=165
     )
     parser.add_argument(
-        "--null_feature_num",
+        "--input_feature_no_overlap_num",
+        type=int,
+        default=0
+    )
+    parser.add_argument(
+        "--extend_null_feature_num",
         type=int,
         default=0
     )
@@ -390,6 +395,21 @@ if __name__ == '__main__':
     data = DataGenerator(args)
     client_data = data.clients[args.clients_name]
     (train_data, test_data) = client_data
+    if 'clients_zero_feature_index' in args:
+        train_x, train_y = zip(*train_data)
+        test_x, test_y = zip(*test_data)
+        train_x, test_x = np.array(train_x), np.array(test_x)
+        if type(args.clients_zero_feature_index) == dict:
+            print("mute feature len",len(args.clients_zero_feature_index[args.clients_name]))
+            train_x[:,args.clients_zero_feature_index[args.clients_name]] = 0
+            test_x[:,args.clients_zero_feature_index[args.clients_name]] = 0
+        else:  #
+            print("all overlap, mute feature len",len(args.clients_zero_feature_index))
+            train_x[:,args.clients_zero_feature_index] = 0
+            test_x[:,args.clients_zero_feature_index] = 0
+          
+        train_data = zip(train_x, train_y)
+        test_data = zip(test_x, test_y)
     global_test_data = zip(data.test_x, data.test_y)
     model = Classifier(args)
     if not os.path.exists(f"script_tmp/stage_2/{args.dataset}/{args.clients_name}/"):
