@@ -163,10 +163,13 @@ class Classifier(tf.keras.Model):
             predictions = predictions / self.config.temperature
             predictions = tf.nn.softmax(predictions)
             y_true = tf.expand_dims(y, axis=1)
-            if self.config.dataset == "elliptic":
+            if self.config.dataset == "elliptic":   
+                cfc = tf.keras.losses.CategoricalFocalCrossentropy(alpha = [1,self.config.client_loss_weight], gamma=self.config.gamma) #reduction=tf.keras.losses.Reduction.NONE
+                y_true_one_hot = tf.keras.utils.to_categorical(y_true, self.config.num_classes)
+                loss = cfc(y_true=y_true_one_hot, y_pred=predictions)
                 predictions = predictions[:,1]
                 predictions = tf.expand_dims(predictions, axis=1)
-                loss = tf.nn.weighted_cross_entropy_with_logits(labels=y_true, logits=predictions, pos_weight=self.loss_weights)
+                # loss = tf.nn.weighted_cross_entropy_with_logits(labels=y_true, logits=predictions, pos_weight=self.loss_weights)
             else: 
                 loss = self.loss_fn_cls(y, predictions)
             
@@ -221,9 +224,11 @@ class Classifier(tf.keras.Model):
             predictions = tf.nn.softmax(predictions)
             y_true = tf.expand_dims(y, axis=1)
             if self.config.dataset == "elliptic":
+                cfc = tf.keras.losses.CategoricalFocalCrossentropy(alpha = [1,self.config.client_loss_weight], gamma=self.config.gamma)
+                label_loss = cfc(y_true=y_true_one_hot, y_pred=predictions)
                 predictions = predictions[:,1]
                 predictions = tf.expand_dims(predictions, axis=1)
-                label_loss = tf.nn.weighted_cross_entropy_with_logits(labels=y_true, logits=predictions, pos_weight=self.loss_weights)
+                # label_loss = tf.nn.weighted_cross_entropy_with_logits(labels=y_true, logits=predictions, pos_weight=self.loss_weights)
             else: 
                 label_loss = self.loss_fn_cls(y, predictions)
             loss += label_loss * self.config.original_cls_loss_weight
@@ -264,9 +269,12 @@ class Classifier(tf.keras.Model):
         y_true = tf.expand_dims(y, axis=1)
         if self.config.dataset == "elliptic":
             predictions = tf.nn.softmax(predictions)
+            cfc = tf.keras.losses.CategoricalFocalCrossentropy(alpha = [1,self.config.client_loss_weight],  gamma=self.config.gamma)
+            y_true_one_hot = tf.keras.utils.to_categorical(y_true, self.config.num_classes)
+            loss = cfc(y_true=y_true_one_hot, y_pred=predictions)
             predictions = predictions[:,1]
             predictions = tf.expand_dims(predictions, axis=1)
-            loss = tf.nn.weighted_cross_entropy_with_logits(labels=y_true, logits=predictions, pos_weight=self.loss_weights)
+            # loss = tf.nn.weighted_cross_entropy_with_logits(labels=y_true, logits=predictions, pos_weight=self.loss_weights)
         else:
             loss = self.loss_fn_cls(y, predictions)
 

@@ -249,6 +249,17 @@ if __name__ == '__main__':
         type=int,
         default=0
     )
+    parser.add_argument(
+        "--client_loss_weight",
+        type=float,
+        default=0
+    )
+    parser.add_argument(
+        "--gamma",
+        type=float,
+        default=2.0
+    )
+    parser.add_argument(
         "--input_feature_no_overlap_num",
         type=int,
         default=0
