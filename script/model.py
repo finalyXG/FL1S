@@ -151,6 +151,13 @@ class Classifier(tf.keras.Model):
 
     def train_step_stage_1(self, batch_data):
         x, y = batch_data
+        result = {}
+        if self.config.skip_if_all_0 and len(y[y==0]) == self.config.batch_size:
+            for metric in self.metrics:
+                result[metric.name] = metric.result()
+            for metric in self.compiled_metrics._metrics:
+                result[metric.name] = metric.result()
+            return result
         with tf.GradientTape() as tape:
             predictions = self(x, training=True)
             predictions = predictions / self.config.temperature
@@ -170,7 +177,6 @@ class Classifier(tf.keras.Model):
             
         gradients = tape.gradient(loss, self.trainable_variables)
         self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
-        result = {}
         for metric in self.metrics:
             if metric.name == "loss":
                 metric.update_state(loss)
@@ -186,6 +192,11 @@ class Classifier(tf.keras.Model):
             x, y = batch_data
         else:  #type(batch_data[0]) == tuple  means batch_data contains feature dataset
             x, y = batch_data[-1]  #last element in batch_data is client train_data
+        result = {}
+        if self.config.skip_if_all_0 and len(y[y==0]) == self.config.batch_size:
+            for metric in self.metrics:
+                result[metric.name] = metric.result()
+            return result
         with tf.GradientTape() as tape:
             loss = 0.0
             predictions = self(x, training=True)
@@ -237,7 +248,6 @@ class Classifier(tf.keras.Model):
 
         gradients = tape.gradient(loss, self.trainable_variables)
         self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
-        result = {}
         for metric in self.metrics:
             if metric.name == "loss":
                 metric.update_state(loss)

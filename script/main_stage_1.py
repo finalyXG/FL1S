@@ -239,6 +239,12 @@ if __name__ == '__main__':
         type=float,
         default=0.2
     )
+    parser.add_argument(
+        "--skip_if_all_0",
+        type=int,
+        default=0
+    )
+    parser.add_argument(
         "--whether_use_transformer_model",
         type=int,
         default=0
