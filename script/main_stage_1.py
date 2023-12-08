@@ -235,6 +235,10 @@ if __name__ == '__main__':
         default=1.0
     )
     parser.add_argument(
+        "--dropout_rate",
+        type=float,
+        default=0.2
+    )
         "--whether_use_transformer_model",
         type=int,
         default=0

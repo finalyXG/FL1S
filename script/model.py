@@ -96,8 +96,7 @@ class Classifier(tf.keras.Model):
     def layer_build_elliptic_transformer(self, kernel_initializer):
         self.dense_1 = keras.layers.Dense(50, activation="relu", kernel_initializer=kernel_initializer)
         # self.dense_2 = keras.layers.Dense(50, activation="relu", kernel_initializer=kernel_initializer)
-        self.attention1 = keras.layers.MultiHeadAttention(num_heads=4, key_dim=4, dropout=0.2, name = "attention1")
-        # self.dropout1 = keras.layers.Dropout(self.config.dropout_rate)
+        self.attention1 = keras.layers.MultiHeadAttention(num_heads=4, key_dim=4, dropout=self.config.dropout_rate, name = "attention1")
         # self.attention2 = keras.layers.MultiHeadAttention(num_heads=4, key_dim=4, output_shape=2, name = "attention2")
         self.dense_2 = keras.layers.Dense(2, activation="linear", kernel_initializer=kernel_initializer)
         self.feature_layers = [self.dense_1,  self.attention1, self.dense_2] #self.attention1, self.dropout1,
