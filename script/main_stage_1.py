@@ -230,6 +230,10 @@ if __name__ == '__main__':
         default=165
     )
     parser.add_argument(
+        "--temperature",
+        type=float,
+        default=1.0
+    )
     parser.add_argument(
         "--whether_use_transformer_model",
         type=int,

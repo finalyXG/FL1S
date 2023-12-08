@@ -154,6 +154,7 @@ class Classifier(tf.keras.Model):
         x, y = batch_data
         with tf.GradientTape() as tape:
             predictions = self(x, training=True)
+            predictions = predictions / self.config.temperature
             predictions = tf.nn.softmax(predictions)
             y_true = tf.expand_dims(y, axis=1)
             if self.config.dataset == "elliptic":
@@ -206,7 +207,7 @@ class Classifier(tf.keras.Model):
                         cos_sim = tf.tensordot(teacher_features, student_feature,axes=1)/(tf.linalg.norm(teacher_features)*tf.linalg.norm(student_feature)+0.001)
                         hidden_rep_loss = 1 - cos_sim
                         loss += self.config.hidden_rep_loss_weight * hidden_rep_loss
-
+            predictions = predictions / self.config.temperature
             predictions = tf.nn.softmax(predictions)
             y_true = tf.expand_dims(y, axis=1)
             if self.config.dataset == "elliptic":
