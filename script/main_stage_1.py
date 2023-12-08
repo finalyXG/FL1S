@@ -123,11 +123,21 @@ def main(config, model, train_data, test_data, global_test_data):
     else:
         train_data = tf.data.Dataset.from_tensor_slices(
             (train_x,train_y)).shuffle(len(train_y)).batch(config.batch_size)   #shuffle(len(train_y))
-    test_data = tf.data.Dataset.from_tensor_slices(
-        (test_x, test_y)).batch(config.batch_size,drop_remainder=True)
-    global_test_data = tf.data.Dataset.from_tensor_slices(
-        (global_test_x, global_test_y)).batch(config.batch_size,drop_remainder=True)  
-        
+    if not os.path.exists(f"script_tmp/stage_1/{args.dataset}/{config.clients_name}"):
+        version_num = 0
+    else:
+        file_list = next(os.walk(f"./script_tmp/stage_1/{args.dataset}/{config.clients_name}"))[1]   #get all dir in path
+        file_list = [int(i.split("_")[0]) for i in file_list] 
+        file_list.sort()
+        version_num = file_list[-1]+1  #get latest version num + 1
+
+    os.makedirs(f"./script_tmp/stage_1/{args.dataset}/{args.clients_name}/{version_num}/")
+    record_hparams_file = open(f"./script_tmp/stage_1/{args.dataset}/{args.clients_name}/{version_num}/hparams_record.txt", "wt")
+    for key,value in vars(args).items():
+        record_hparams_file.write(f"{key}: {value}")
+        record_hparams_file.write("\n")
+    record_hparams_file.close()
+
     if config.dataset == "elliptic":
         model.set_loss_weight(class_rate)
         metrics_list = [reduction_number(), reduction_rate(), epochs(), score0_target1_num(), smaller_half_number(),
@@ -151,7 +161,7 @@ def main(config, model, train_data, test_data, global_test_data):
                     loss=tf.keras.metrics.Mean(name='loss'),
                     run_eagerly = True)
 
-    checkpoint_filepath = f'/Users/yangingdai/Downloads/GAN_Tensorflow-Project-Template/script_tmp/stage_1/{config.dataset}/{config.clients_name}/checkpoint/checkpoint'
+    checkpoint_filepath = f'./script_tmp/stage_1/{config.dataset}/{config.clients_name}/{version_num}/checkpoint/checkpoint'
     model_checkpoint_callback = tf.keras.callbacks.ModelCheckpoint(
         filepath=checkpoint_filepath,
         save_weights_only=True,
@@ -169,8 +179,8 @@ def main(config, model, train_data, test_data, global_test_data):
     model.load_weights(checkpoint_filepath)
     test_score = model.evaluate(validation_data, callbacks=[LossAndErrorPrintingCallback(),CustomCallback()],return_dict=True, verbose=0)
 
-    np.save(f"script_tmp/stage_1/{config.dataset}/{config.clients_name}/real_features",model.get_features(train_x))   #save feature as a dict
-    np.save(f"script_tmp/stage_1/{config.dataset}/{config.clients_name}/label",train_y)
+    np.save(f"script_tmp/stage_1/{config.dataset}/{config.clients_name}/{version_num}/real_features",model.get_features(train_x))   #save feature as a dict
+    np.save(f"script_tmp/stage_1/{config.dataset}/{config.clients_name}/{version_num}/label",train_y)
 
     #using GAN
     if config.whether_generate_fake_feature:
@@ -435,11 +445,4 @@ if __name__ == '__main__':
         args.initial_feature_center = generate_initial_feature_center(args)
     model = Classifier(args)
 
-    if not os.path.exists(f"script_tmp/stage_1/{args.dataset}/{args.clients_name}/"):
-        os.makedirs(f"script_tmp/stage_1/{args.dataset}/{args.clients_name}/")
-    record_hparams_file = open(f"./script_tmp/stage_1/{args.dataset}/{args.clients_name}/hparams_record.txt", "wt")
-    for key,value in vars(args).items():
-        record_hparams_file.write(f"{key}: {value}")
-        record_hparams_file.write("\n")
-    record_hparams_file.close()
     main(args, model, train_data, test_data, global_test_data)

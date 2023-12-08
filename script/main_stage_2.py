@@ -264,8 +264,8 @@ def main(config, model, train_data, test_data, global_test_data):
 
     model.load_weights(checkpoint_filepath)
     test_score = model.evaluate(validation_data, callbacks=[LossAndErrorPrintingCallback(),CustomCallback()],return_dict=True, verbose=0)
-    np.save(f"script_tmp/stage_1/{config.dataset}/{config.clients_name}/real_features",model.get_features(train_x))   #save feature as a dict
-    np.save(f"script_tmp/stage_1/{config.dataset}/{config.clients_name}/label",train_y)
+    np.save(f"script_tmp/stage_2/{config.dataset}/{config.clients_name}/{version_num}/real_features",model.get_features(train_x))   #save feature as a dict
+    np.save(f"script_tmp/stage_2/{config.dataset}/{config.clients_name}/{version_num}/label",train_y)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -474,12 +474,5 @@ if __name__ == '__main__':
         test_data = zip(test_x, test_y)
     global_test_data = zip(data.test_x, data.test_y)
     model = Classifier(args)
-    if not os.path.exists(f"script_tmp/stage_2/{args.dataset}/{args.clients_name}/"):
-        os.makedirs(f"script_tmp/stage_2/{args.dataset}/{args.clients_name}/")
-    record_hparams_file = open(f"./script_tmp/stage_2/{args.dataset}/{args.clients_name}/hparams_record.txt", "wt")
-    for key,value in vars(args).items():
-        record_hparams_file.write(f"{key}: {value}")
-        record_hparams_file.write("\n")
-    record_hparams_file.close()
 
     main(args, model, train_data, test_data, global_test_data)
