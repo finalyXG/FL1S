@@ -203,7 +203,15 @@ class Classifier(tf.keras.Model):
         with tf.GradientTape() as tape:
             loss = 0.0
             predictions = self(x, training=True)
+            y_change = np.array(tf.identity(y))
             for teacher in self.teacher_list:
+                if self.config.change_ground_truth:
+                    teacher_predictions = teacher(x, training=False)
+                    teacher_predictions = np.argmax(teacher_predictions, axis=1)
+                    index = tf.where(tf.equal(teacher_predictions, 1)).numpy()  
+                    index = tf.squeeze(index, axis=1) 
+                    y_change[index.numpy()] = 1
+
                 if self.config.soft_target_loss_weight != float(0):
                     teacher_predictions = teacher(x, training=False)
                     soft_targets = tf.nn.softmax(predictions/self.config.T)
@@ -225,6 +233,21 @@ class Classifier(tf.keras.Model):
             y_true = tf.expand_dims(y, axis=1)
             if self.config.dataset == "elliptic":
                 cfc = tf.keras.losses.CategoricalFocalCrossentropy(alpha = [1,self.config.client_loss_weight], gamma=self.config.gamma)
+                if self.config.change_ground_truth:
+                    index = tf.where(tf.equal(y, 1)).numpy() 
+                    self.original_label1_num += len(index)
+                    index = tf.where(tf.equal(y_change, 1)).numpy()  
+                    self.changed_label1_num += len(index)
+
+                    index = tf.where(tf.equal(y, 0)).numpy() 
+                    self.original_label0_num += len(index)
+                    index = tf.where(tf.equal(y_change, 0)).numpy()  
+                    self.changed_label0_num += len(index)
+
+                    y_change = tf.expand_dims(y_change, axis=1)
+                    y_true_one_hot = tf.keras.utils.to_categorical(y_change, self.config.num_classes)
+                else:   
+                    y_true_one_hot = tf.keras.utils.to_categorical(y_true, self.config.num_classes)
                 label_loss = cfc(y_true=y_true_one_hot, y_pred=predictions)
                 predictions = predictions[:,1]
                 predictions = tf.expand_dims(predictions, axis=1)

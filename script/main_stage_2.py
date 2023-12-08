@@ -15,6 +15,10 @@ class CustomCallback(tf.keras.callbacks.Callback):
         self.dataset = dataset
 
     def on_epoch_begin(self, epoch, logs=None):
+        model.changed_label1_num = 0
+        model.original_label1_num = 0
+        model.changed_label0_num = 0
+        model.original_label0_num = 0
         if self.dataset:
             if model.feature_data and model.config.update_feature_by_epoch:
                 feature_dataset = {}
@@ -46,6 +50,8 @@ class CustomCallback(tf.keras.callbacks.Callback):
             metric.reset_states()
         for metric in model.compiled_metrics._metrics:
             metric.reset_states()
+        print("original class rate:",model.original_label0_num/model.original_label1_num )
+        print("changed class rate:",model.changed_label0_num/model.changed_label1_num )
 
     def on_test_begin(self, logs=None):
         for metric in model.metrics:
@@ -259,6 +265,10 @@ if __name__ == '__main__':
         default=165
     )
     parser.add_argument(
+        "--change_ground_truth",
+        type=int,
+        default=0
+    )
     parser.add_argument(
         "--temperature",
         type=float,
