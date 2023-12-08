@@ -230,6 +230,11 @@ if __name__ == '__main__':
         default=165
     )
     parser.add_argument(
+    parser.add_argument(
+        "--whether_use_transformer_model",
+        type=int,
+        default=0
+    )
         "--input_feature_no_overlap_num",
         type=int,
         default=0

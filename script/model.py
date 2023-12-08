@@ -25,7 +25,8 @@ class Classifier(tf.keras.Model):
         # init metric
         if config.dataset == "elliptic":
             self.layer_build = self.layer_build_elliptic
-
+            if config.whether_use_transformer_model:
+                self.layer_build = self.layer_build_elliptic_transformer
         # init kernel_initializer and model layer
         if config.use_same_kernel_initializer:
             self.layer_build("glorot_uniform")
@@ -92,6 +93,14 @@ class Classifier(tf.keras.Model):
         self.dense_4 = Dense(2, kernel_initializer=kernel_initializer)  
         self.feature_layers = [self.dense_1,self.dense_2,self.dense_3,self.dense_4]
 
+    def layer_build_elliptic_transformer(self, kernel_initializer):
+        self.dense_1 = keras.layers.Dense(50, activation="relu", kernel_initializer=kernel_initializer)
+        # self.dense_2 = keras.layers.Dense(50, activation="relu", kernel_initializer=kernel_initializer)
+        self.attention1 = keras.layers.MultiHeadAttention(num_heads=4, key_dim=4, dropout=0.2, name = "attention1")
+        # self.dropout1 = keras.layers.Dropout(self.config.dropout_rate)
+        # self.attention2 = keras.layers.MultiHeadAttention(num_heads=4, key_dim=4, output_shape=2, name = "attention2")
+        self.dense_2 = keras.layers.Dense(2, activation="linear", kernel_initializer=kernel_initializer)
+        self.feature_layers = [self.dense_1,  self.attention1, self.dense_2] #self.attention1, self.dropout1,
 
     def init_saver(self):
         # here you initialize the tensorflow saver that will be used in saving the checkpoints.
@@ -123,12 +132,22 @@ class Classifier(tf.keras.Model):
 
     def call(self, x):
         for layer in self.feature_layers:
-            x = layer(x)
+            if "attention" in layer.name:
+                x = tf.expand_dims(x, axis=-1)
+                x = layer(x, x)
+                x = tf.reshape(x, (x.shape[0], -1))
+            else:
+                x = layer(x)
         return x
     
     def call_2(self, layer_num, x):
         for layer in self.feature_layers[layer_num:]:
-            x = layer(x)
+            if "attention" in layer.name:
+                x = tf.expand_dims(x, axis=-1)
+                x = layer(x, x)
+                x = tf.reshape(x, (x.shape[0], -1))
+            else:
+                x = layer(x)
         return x
 
     def train_step_stage_1(self, batch_data):
@@ -256,7 +275,12 @@ class Classifier(tf.keras.Model):
         for features_ouput_layer_num in self.config.features_ouput_layer_list:
             x = tf.identity(inputs)
             for layer in self.feature_layers[:features_ouput_layer_num]:
-                x = layer(x)
+                if "attention" in layer.name:
+                    x = tf.expand_dims(x, axis=-1)
+                    x = layer(x, x)
+                    x = tf.reshape(x, (x.shape[0], -1))
+                else:
+                    x = layer(x)
             feature_list[features_ouput_layer_num] = x
         return feature_list
 

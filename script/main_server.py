@@ -152,6 +152,11 @@ if __name__ == '__main__':
         default=1,
     )
     parser.add_argument(
+        "--whether_use_transformer_model",
+        type=int,
+        default=0
+    )
+    parser.add_argument(
         "--alpha",
         type=float,
         help="Measure of heterogeneity (higher is more homogeneous, lower is more heterogenous)",
