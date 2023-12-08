@@ -114,3 +114,4 @@ img/
 record/
 data_loader/svhn
 script_tmp
+script_logs
