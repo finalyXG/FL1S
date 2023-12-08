@@ -20,11 +20,15 @@ def concatenate_feature_labels(config):
     feature_list = []
     label_list = []
     features_centre_dict_list = []
+    zero_feature_index_list = []
     if config.clients_1_feature_path is not None:
         tmp_feature = np.load(f"{config.clients_1_feature_path}/real_features.npy",allow_pickle=True).item()
         feature_list.append(tmp_feature)
         tmp_label = np.load(f"{config.clients_1_feature_path}/label.npy",allow_pickle=True)
         label_list.append(tmp_label)
+        if config.adjust_model_weight_by_zero_feature_index:
+            zero_feature_index = np.load(f"{config.clients_1_feature_path}/zero_feature_index.npy")
+            zero_feature_index_list.append(zero_feature_index)
         features_centre_dict = get_features_centre(tmp_feature, tmp_label)
         features_centre_dict_list.append(features_centre_dict)
     if config.clients_2_feature_path is not None:
@@ -32,6 +36,9 @@ def concatenate_feature_labels(config):
         feature_list.append(tmp_feature)
         tmp_label = np.load(f"{config.clients_2_feature_path}/label.npy",allow_pickle=True)
         label_list.append(tmp_label)
+        if config.adjust_model_weight_by_zero_feature_index:
+            zero_feature_index = np.load(f"{config.clients_2_feature_path}/zero_feature_index.npy")
+            zero_feature_index_list.append(zero_feature_index)
         features_centre_dict = get_features_centre(tmp_feature, tmp_label)
         features_centre_dict_list.append(features_centre_dict)
     if config.clients_3_feature_path is not None:
@@ -39,6 +46,9 @@ def concatenate_feature_labels(config):
         feature_list.append(tmp_feature)
         tmp_label = np.load(f"{config.clients_3_feature_path}/label.npy",allow_pickle=True)
         label_list.append(tmp_label)
+        if config.adjust_model_weight_by_zero_feature_index:
+            zero_feature_index = np.load(f"{config.clients_3_feature_path}/zero_feature_index.npy")
+            zero_feature_index_list.append(zero_feature_index)
         features_centre_dict = get_features_centre(tmp_feature, tmp_label)
         features_centre_dict_list.append(features_centre_dict)
     if config.clients_4_feature_path is not None:
@@ -46,6 +56,9 @@ def concatenate_feature_labels(config):
         feature_list.append(tmp_feature)
         tmp_label = np.load(f"{config.clients_4_feature_path}/label.npy",allow_pickle=True)
         label_list.append(tmp_label)
+        if config.adjust_model_weight_by_zero_feature_index:
+            zero_feature_index = np.load(f"{config.clients_4_feature_path}/zero_feature_index.npy")
+            zero_feature_index_list.append(zero_feature_index)
         features_centre_dict = get_features_centre(tmp_feature, tmp_label)
         features_centre_dict_list.append(features_centre_dict)
     if config.clients_5_feature_path is not None:
@@ -53,6 +66,9 @@ def concatenate_feature_labels(config):
         feature_list.append(dict(tmp_feature))
         tmp_label = np.load(f"{config.clients_5_feature_path}/label.npy",allow_pickle=True)
         label_list.append(tmp_label)
+        if config.adjust_model_weight_by_zero_feature_index:
+            zero_feature_index = np.load(f"{config.clients_5_feature_path}/zero_feature_index.npy")
+            zero_feature_index_list.append(zero_feature_index)
         features_centre_dict = get_features_centre(tmp_feature, tmp_label)
         features_centre_dict_list.append(features_centre_dict)
     dataset_dict = {}
@@ -77,32 +93,54 @@ def concatenate_feature_labels(config):
                     total_features_centre_dict[layer_num][label] = tf.reduce_mean(total_features_centre_dict[layer_num][label], axis=0) 
             else:
                 total_features_centre_dict[layer_num] = features_centre_dict[layer_num]
-    return dataset_dict, total_features_centre_dict
+    return dataset_dict, total_features_centre_dict, zero_feature_index_list
 
-def model_avg_init(config, cls):
+def model_avg_init(config, cls, zero_feature_index_list, test_sample):
     weight_object = []
     if config.clients_1_model_path is not None:
         cls.load_weights(tf.train.latest_checkpoint(config.clients_1_model_path)).expect_partial()
+        # cls(test_sample)
         weight_object.append(copy.deepcopy(cls.weights))
     if config.clients_2_model_path is not None:
         cls.load_weights(tf.train.latest_checkpoint(config.clients_2_model_path)).expect_partial()
+        # cls(test_sample)
         weight_object.append(copy.deepcopy(cls.weights))
     if config.clients_3_model_path is not None:
         cls.load_weights(tf.train.latest_checkpoint(config.clients_3_model_path)).expect_partial()
+        # cls(test_sample)       
         weight_object.append(copy.deepcopy(cls.weights))
     if config.clients_4_model_path is not None:
         cls.load_weights(tf.train.latest_checkpoint(config.clients_4_model_path)).expect_partial()
+        # cls(test_sample)        
         weight_object.append(copy.deepcopy(cls.weights))
     if config.clients_5_model_path is not None:
         cls.load_weights(tf.train.latest_checkpoint(config.clients_5_model_path)).expect_partial()
+        # cls(test_sample)
         weight_object.append(copy.deepcopy(cls.weights))
 
     data_amts = len(weight_object)
     if data_amts > 1:
+        #get first client model weight
         w_avg = copy.deepcopy(weight_object[0])
+        # w_avg[0] = w_avg[0].numpy() 
+        # w_avg[0][zero_feature_index_list[0],:] = 0  #set 0 in zero_feature_index in first layer weight
+        # zero_feature_index_in_all_clients = [i for clients_list in zero_feature_index_list for i in clients_list ]
+        # print("len zero_feature_index_in_all_clients",len(zero_feature_index_in_all_clients))
+        # print("set len zero_feature_index_in_all_clients",len(set(zero_feature_index_in_all_clients)))
+        #for loop each layer index
         for index in range(len(w_avg)):
+            # if index == 0: 
+            #     for feature_index in set(zero_feature_index_in_all_clients):
+            #         w_avg[index][feature_index] = w_avg[index][feature_index]/zero_feature_index_in_all_clients.count(feature_index)
+            # else:
             w_avg[index] = w_avg[index]/data_amts
             for i in range(1, data_amts):
+                # if index == 0:  #in first layer weight, set 0 in zero feature node
+                #     weight_object[i][index] = weight_object[i][index].numpy()
+                #     weight_object[i][index][zero_feature_index_list[i],:] = 0 
+                #     for feature_index in set(zero_feature_index_in_all_clients):
+                #         w_avg[index][feature_index] += weight_object[i][index][feature_index]/zero_feature_index_in_all_clients.count(feature_index)
+                # else:
                 w_avg[index] += weight_object[i][index]/data_amts
         cls.set_weights(copy.deepcopy(w_avg))
     return cls
@@ -111,9 +149,9 @@ def mian(config, cls, test_sample):
     avg_model = None
     feature_dataset = None
     feature_center = None
+    feature_data_dict, feature_center, zero_feature_index_list = concatenate_feature_labels(config)
     if config.use_initial_model_weight:
-        avg_model = model_avg_init(config, cls)
-    feature_data_dict, feature_center = concatenate_feature_labels(config)
+        avg_model = model_avg_init(config, cls, zero_feature_index_list, test_sample)
     avg_model(test_sample)
     avg_model.save_weights(f"script_tmp/server/{config.dataset}/{config.clients_name}/model_avg/cp-{1:04d}.ckpt")
     np.save(f"script_tmp/server/{config.dataset}/{config.clients_name}/feature_center",feature_center)
@@ -132,6 +170,11 @@ if __name__ == '__main__':
         "--dataset",
         type=str,
         default="mnist"
+    )
+    parser.add_argument(
+        "--adjust_model_weight_by_zero_feature_index",
+        type=int,
+        default=0
     )
     parser.add_argument(
         "--clients_name",
