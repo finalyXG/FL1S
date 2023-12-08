@@ -66,6 +66,20 @@ class LossAndErrorPrintingCallback(tf.keras.callbacks.Callback):
                 print(f"{k} is {v:.5f}, ", end='')
         print()
 
+class RecordTableCallback(tf.keras.callbacks.Callback):
+    def on_test_end(self, logs=None):
+        if not os.path.exists(f'script_tmp/stage_1/metrics_record.xlsx'):
+            #create new exccel to record metrics in all clients
+            global_workbook = openpyxl.Workbook() 
+            global_worksheet = global_workbook.create_sheet("0", 0)
+            for col_num,col_index in enumerate(["current_time",'dataset',"clients_name","temperature","loss_weight","loss", 'acc', "rd", "rr", 'f1', 'recall', 'precision']):
+                global_worksheet.cell(row=1, column=col_num+1, value = col_index) 
+        else: 
+            global_workbook = openpyxl.load_workbook(f'script_tmp/stage_1/metrics_record.xlsx')
+            global_worksheet = global_workbook['0']
+        global_worksheet.append([datetime.datetime.now().strftime("%Y%m%d-%H%M%S"), model.config.dataset,model.config.clients_name, model.config.temperature, model.config.client_loss_weight, float(logs['loss']),float(logs['cls_accuracy']),int(logs['reduction_number']),float(logs['reduction_rate']),float(logs['f1score']),float(logs['recall']),float(logs['precision'])])
+        global_workbook.save('script_tmp/stage_1/metrics_record.xlsx')
+
 def generate_initial_feature_center(config):
     """
     feature_center_dict[feature_layer_num][data_label]
