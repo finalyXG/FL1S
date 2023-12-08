@@ -12,6 +12,102 @@ from data_loader.data_generator import DataGenerator
 from tensorflow.keras.layers import Dense, Flatten, Conv2D, MaxPooling2D, Multiply, LeakyReLU, Embedding, Dropout,  Reshape, BatchNormalization
 from tensorflow.python.training.tracking.data_structures import NoDependency
 
+class reduction_number(keras.metrics.Metric):
+    def __init__(self, name = 'rd', **kwargs):
+        super(reduction_number, self).__init__(**kwargs)
+        self.rd = self.add_weight('rd', initializer = 'zeros')
+
+    def update_state(self, y_true, y_pred):
+        y_true = tf.squeeze(y_true)
+        y_pred = tf.squeeze(y_pred)
+        index = tf.where(tf.equal(y_true, 1)).numpy()  
+        index = tf.squeeze(index) 
+        p_min_s = tf.sort(tf.gather(y_pred,index), direction='ASCENDING')[0]
+        rd = len(y_pred[y_pred<p_min_s])
+        self.rd.assign_add(tf.reduce_sum(tf.cast(rd, self.dtype)))
+    
+    def reset_state(self):
+        self.rd.assign(0)
+
+    def result(self):
+        return self.rd 
+
+class reduction_rate(keras.metrics.Metric):
+    def __init__(self, name = 'rr', **kwargs):
+        super(reduction_rate, self).__init__(**kwargs)
+        self.rr = self.add_weight('rr', initializer = 'zeros')
+
+    def update_state(self, y_true, y_pred):
+        y_true = tf.squeeze(y_true)
+        y_pred = tf.squeeze(y_pred)
+        index = tf.where(tf.equal(y_true, 1)).numpy()  
+        index = tf.squeeze(index) 
+        p_min_s = tf.sort(tf.gather(y_pred,index), direction='ASCENDING')[0]
+        rd = len(y_pred[y_pred<p_min_s])
+        target_0_num = len(tf.where(tf.equal(y_true, 0)).numpy())
+        rr = rd/target_0_num
+        self.rr.assign_add(tf.reduce_sum(tf.cast(rr, self.dtype)))
+    
+    def reset_state(self):
+        self.rr.assign(0)
+
+    def result(self):
+        return self.rr 
+    
+class smaller_half_number(keras.metrics.Metric):
+    def __init__(self, name = 'smaller_half_number', **kwargs):
+        super(smaller_half_number, self).__init__(**kwargs)
+        self.smaller_half_number = self.add_weight('smaller_half_number', initializer = 'zeros')
+
+    def update_state(self, y_true, y_pred):
+        y_true = tf.squeeze(y_true)
+        y_pred = tf.squeeze(y_pred)
+        index = tf.where(tf.equal(y_true, 1)).numpy()  
+        index = tf.squeeze(index) 
+        target_1_score = tf.gather(y_pred,index)
+        smaller_half_number = len(target_1_score[target_1_score<0.5])
+        self.smaller_half_number.assign_add(tf.reduce_sum(tf.cast(smaller_half_number, self.dtype)))
+    
+    def reset_state(self):
+        self.smaller_half_number.assign(0)
+
+    def result(self):
+        return self.smaller_half_number 
+    
+class epochs(keras.metrics.Metric):
+    def __init__(self, name = 'epochs', **kwargs):
+        super(epochs, self).__init__(**kwargs)
+        self.epochs = self.add_weight('epochs', initializer = 'zeros')
+
+    def update_state(self, epochs):
+        self.epochs.assign_add(tf.reduce_sum(tf.cast(epochs, self.dtype)))
+    
+    def reset_state(self):
+        self.epochs.assign(0)
+
+    def result(self):
+        return self.epochs
+
+class score0_target1_num(keras.metrics.Metric):
+    def __init__(self, name = 'score0_target1_num', **kwargs):
+        super(score0_target1_num, self).__init__(**kwargs)
+        self.score0_target1_num = self.add_weight('score0_target1_num', initializer = 'zeros')
+
+    def update_state(self, y_true, y_pred):
+        y_true = tf.squeeze(y_true)
+        y_pred = tf.squeeze(y_pred)
+        index = tf.where(tf.equal(y_true, 1)).numpy()  
+        index = tf.squeeze(index) 
+        sort_1_score = tf.sort(tf.gather(y_pred,index), direction='ASCENDING')
+        score0_target1_num = len(sort_1_score[sort_1_score==0])
+        self.score0_target1_num.assign_add(tf.reduce_sum(tf.cast(score0_target1_num, self.dtype)))
+
+    def reset_state(self):
+        self.score0_target1_num.assign(0)
+
+    def result(self):
+        return self.score0_target1_num
+
 class Classifier(tf.keras.Model):
     def __init__(self, config):
         super(Classifier, self).__init__()
@@ -22,6 +118,7 @@ class Classifier(tf.keras.Model):
         # init the epoch counter
         self.init_cur_epoch()
         self.init_saver()
+        self.epochs = tf.Variable(initial_value=0, trainable=False)
         # init metric
         if config.dataset == "elliptic":
             self.layer_build = self.layer_build_elliptic
@@ -186,8 +283,12 @@ class Classifier(tf.keras.Model):
                 result[metric.name] = metric.result()
 
         for metric in self.compiled_metrics._metrics:
-            metric.update_state(y_true, predictions)
-            result[metric.name] = metric.result()
+            if metric.name != "reduction_number" and metric.name != "reduction_rate" and metric.name != "score0_target1_num" and metric.name != "smaller_half_number" and metric.name != "epochs": 
+                metric.update_state(y_true, predictions)
+                result[metric.name] = metric.result()
+            elif metric.name == "epochs":
+                metric.update_state(self.epochs)
+                result[metric.name] = metric.result()
         return result
 
     def train_step_stage_2(self, batch_data):
@@ -282,8 +383,12 @@ class Classifier(tf.keras.Model):
                 result[metric.name] = metric.result()
 
         for metric in self.compiled_metrics._metrics:
-            metric.update_state(y_true, predictions)
-            result[metric.name] = metric.result()
+            if metric.name != "reduction_number" and metric.name != "reduction_rate" and metric.name != "score0_target1_num" and metric.name != "smaller_half_number" and metric.name != "epochs": 
+                metric.update_state(y_true, predictions)
+                result[metric.name] = metric.result()
+            elif metric.name == "epochs":
+                metric.update_state(self.epochs)
+                result[metric.name] = metric.result()
         return result
     
     def test_step(self, data):
@@ -307,8 +412,12 @@ class Classifier(tf.keras.Model):
                 metric.update_state(loss)
                 result[metric.name] = metric.result()
         for metric in self.compiled_metrics._metrics:
-            metric.update_state(y_true, predictions)
-            result[metric.name] = metric.result()
+            if metric.name != "epochs":
+                metric.update_state(y_true, predictions)
+                result[metric.name] = metric.result()
+            else:
+                metric.update_state(self.epochs)
+                result[metric.name] = metric.result()
         return result
 
     def get_features(self, inputs):

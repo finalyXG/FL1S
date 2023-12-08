@@ -7,9 +7,9 @@ import pickle
 import random
 import openpyxl
 import copy
-import time
+import time, datetime
 from data_loader.data_generator import DataGenerator
-from script.model import Classifier
+from script.model import Classifier, GAN, reduction_number, reduction_rate, epochs, score0_target1_num, smaller_half_number
 class CustomCallback(tf.keras.callbacks.Callback):
     def __init__(self, dataset = None):
         self.dataset = dataset
@@ -46,6 +46,7 @@ class CustomCallback(tf.keras.callbacks.Callback):
             real_features = self.model.get_features(model.train_x)
             np.save(f"{path}/real_features",real_features)
             np.save(f"{path}/label",model.train_y)
+        model.epochs.assign(epoch)
         for metric in model.metrics:
             metric.reset_states()
         for metric in model.compiled_metrics._metrics:
@@ -62,7 +63,7 @@ class CustomCallback(tf.keras.callbacks.Callback):
 class LossAndErrorPrintingCallback(tf.keras.callbacks.Callback):
     def on_epoch_end(self, epoch, logs=None):
         print()
-        print(f"Epoch: {epoch+1} ", end='')
+        print(f"Epoch: {epoch} ", end='')
         for k,v in logs.items():
             if 'val' not in k:
                 if "f1score" in k:
@@ -201,7 +202,8 @@ def main(config, model, train_data, test_data, global_test_data):
 
     if config.dataset == "elliptic":
         model.set_loss_weight(class_rate)
-        metrics_list = [tf.keras.metrics.BinaryAccuracy(name='cls_accuracy'),
+        metrics_list = [reduction_number(), reduction_rate(), epochs(), score0_target1_num(), smaller_half_number(),
+                        tf.keras.metrics.BinaryAccuracy(name='cls_accuracy'),
                         tf.keras.metrics.Recall(name='recall'),
                         tf.keras.metrics.Precision(name='precision'),
                         tf.keras.metrics.F1Score(threshold=0.5, name='f1score')]
@@ -212,6 +214,11 @@ def main(config, model, train_data, test_data, global_test_data):
         monitor = 'val_cls_accuracy'
     elif config.model_save_metrics == "f1":
         monitor = 'val_f1score'
+    elif config.model_save_metrics == "rd":
+        monitor = 'val_reduction_number'
+    elif config.model_save_metrics == "rr":
+        monitor = 'val_reduction_rate'
+
 
     model.compile(optimizer=tf.keras.optimizers.legacy.Adam(config.learning_rate),
                     metrics= metrics_list,
