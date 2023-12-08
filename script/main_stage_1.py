@@ -123,6 +123,10 @@ def main(config, model, train_data, test_data, global_test_data):
     else:
         train_data = tf.data.Dataset.from_tensor_slices(
             (train_x,train_y)).shuffle(len(train_y)).batch(config.batch_size)   #shuffle(len(train_y))
+    # test_data = tf.data.Dataset.from_tensor_slices(
+    #     (test_x, test_y)).batch(config.batch_size,drop_remainder=True)
+    # global_test_data = tf.data.Dataset.from_tensor_slices(
+    #     (global_test_x, global_test_y)).batch(config.batch_size,drop_remainder=True)  
     if not os.path.exists(f"script_tmp/stage_1/{args.dataset}/{config.clients_name}"):
         version_num = 0
     else:
@@ -168,16 +172,21 @@ def main(config, model, train_data, test_data, global_test_data):
         monitor=monitor,
         mode='max',
         save_best_only=True)
-
+    early_stopping = tf.keras.callbacks.EarlyStopping(monitor=monitor, patience=8, mode="max")
     if config.validation_data == "local_test_data":
-        validation_data = test_data
+        validation_data = (test_x, test_y)
+        validation_batch_size = len(test_y)
     elif config.validation_data == "global_test_data":
-        validation_data = global_test_data
-    history = model.fit(train_data, epochs=config.cls_num_epochs, verbose=0, shuffle=True, validation_data=validation_data, callbacks=[CustomCallback(), model_checkpoint_callback, LossAndErrorPrintingCallback() ])
-    test_score = model.evaluate(validation_data, callbacks=[LossAndErrorPrintingCallback(),CustomCallback()],return_dict=True, verbose=0)
+        validation_data = (global_test_x, global_test_y)
+        validation_batch_size = len(global_test_y)
+
+    log_dir = "script_logs/fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir)
+    history = model.fit(train_data, epochs=config.cls_num_epochs, verbose=0, shuffle=True, validation_data=validation_data, validation_batch_size = validation_batch_size, callbacks=[early_stopping, tensorboard_callback, CustomCallback(), model_checkpoint_callback, LossAndErrorPrintingCallback() ])
+    test_score = model.evaluate(validation_data, batch_size = validation_batch_size, callbacks=[LossAndErrorPrintingCallback(),CustomCallback()],return_dict=True, verbose=0)
 
     model.load_weights(checkpoint_filepath)
-    test_score = model.evaluate(validation_data, callbacks=[LossAndErrorPrintingCallback(),CustomCallback()],return_dict=True, verbose=0)
+    test_score = model.evaluate(validation_data, batch_size = validation_batch_size, callbacks=[RecordTableCallback(), LossAndErrorPrintingCallback(),CustomCallback()],return_dict=True, verbose=0)
 
     np.save(f"script_tmp/stage_1/{config.dataset}/{config.clients_name}/{version_num}/real_features",model.get_features(train_x))   #save feature as a dict
     np.save(f"script_tmp/stage_1/{config.dataset}/{config.clients_name}/{version_num}/label",train_y)
@@ -424,15 +433,17 @@ if __name__ == '__main__':
     if 'clients_zero_feature_index' in args:
         train_x, train_y = zip(*train_data)
         test_x, test_y = zip(*test_data)
-        train_x, test_x = np.array(train_x), np.array(test_x)
+        train_x, test_x, data.test_x = np.array(train_x), np.array(test_x), np.array(data.test_x)
         if type(args.clients_zero_feature_index) == dict:
             print("mute feature len",len(args.clients_zero_feature_index[args.clients_name]))
             train_x[:,args.clients_zero_feature_index[args.clients_name]] = 0
             test_x[:,args.clients_zero_feature_index[args.clients_name]] = 0
+            data.test_x[:,args.clients_zero_feature_index[args.clients_name]] = 0
         else:  #
             print("all overlap, mute feature len",len(args.clients_zero_feature_index))
             train_x[:,args.clients_zero_feature_index] = 0
             test_x[:,args.clients_zero_feature_index] = 0
+            data.test_x[:,args.clients_zero_feature_index] = 0
           
         train_data = zip(train_x, train_y)
         test_data = zip(test_x, test_y)

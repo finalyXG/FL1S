@@ -39,7 +39,7 @@ class CustomCallback(tf.keras.callbacks.Callback):
     def on_epoch_end(self, epoch, logs=None):
         #save feature, feature center in cur_epoch model 
         if epoch in self.model.config.initial_client_ouput_feat_epochs:
-            path = f"/Users/yangingdai/Downloads/GAN_Tensorflow-Project-Template/script_tmp/stage_1/{self.model.config.dataset}/{self.model.config.clients_name}/assigned_epoch/{epoch}"
+            path = f"/Users/yangingdai/Downloads/GAN_Tensorflow-Project-Template/script_tmp/stage_2/{self.model.config.dataset}/{self.model.config.clients_name}/assigned_epoch/{epoch}"
             if not os.path.exists(path):
                 os.makedirs(path)
             model.save_weights(f"{path}/cp-{epoch:04d}.ckpt")
@@ -127,7 +127,7 @@ def create_feature_dataset(config, totoal_feature_data, train_data):
                     (np.array(feature), np.array(labels)))
         dataset_dict[layer_num] = feature_dataset
 
-    if not config.update_feature_by_epoch and not config.feature_match_train_data:
+    if config.feat_loss_weight != float(0) and not config.update_feature_by_epoch and not config.feature_match_train_data:
         train_data_idx = np.random.choice(range(client_train_data_num), size=config.total_features_num, replace=True)
         train_data = np.array(train_data, dtype=object)[train_data_idx]
     return dataset_dict, train_data
@@ -193,12 +193,12 @@ def main(config, model, train_data, test_data, global_test_data):
     test_x, test_y = np.array(test_x),np.array(test_y)
     global_test_x, global_test_y = np.array(global_test_x), np.array(global_test_y)
 
-    train_data = tf.data.Dataset.from_tensor_slices((train_x,train_y))#.shuffle(len(train_y))  ,drop_remainder=True
+    train_data = tf.data.Dataset.from_tensor_slices((train_x,train_y)).shuffle(len(train_y))  #,drop_remainder=True
     model.set_train_data(train_data)
-    test_data = tf.data.Dataset.from_tensor_slices(
-        (test_x, test_y)).batch(config.batch_size)
-    global_test_data = tf.data.Dataset.from_tensor_slices(
-        (global_test_x,global_test_y)).batch(config.batch_size)
+    # test_data = tf.data.Dataset.from_tensor_slices(
+    #     (test_x, test_y)).batch(config.batch_size)
+    # global_test_data = tf.data.Dataset.from_tensor_slices(
+    #     (global_test_x,global_test_y)).batch(config.batch_size)
 
     if config.dataset == "elliptic":
         model.set_loss_weight(class_rate)
@@ -219,12 +219,27 @@ def main(config, model, train_data, test_data, global_test_data):
     elif config.model_save_metrics == "rr":
         monitor = 'val_reduction_rate'
 
+    if not os.path.exists(f"script_tmp/stage_2/{args.dataset}/{config.clients_name}"):
+        version_num = 0
+    else:
+        file_list = next(os.walk(f"./script_tmp/stage_2/{args.dataset}/{config.clients_name}"))[1]   #get all dir in path
+        file_list = [int(i.split("_")[0]) for i in file_list] 
+        file_list.sort()
+        version_num = file_list[-1]+1  #get latest version num + 1
+    
+    os.makedirs(f"./script_tmp/stage_2/{args.dataset}/{args.clients_name}/{version_num}/")
+    record_hparams_file = open(f"./script_tmp/stage_2/{args.dataset}/{args.clients_name}/{version_num}/hparams_record.txt", "wt")
+    for key,value in vars(args).items():
+        record_hparams_file.write(f"{key}: {value}")
+        record_hparams_file.write("\n")
+    record_hparams_file.close()
 
     model.compile(optimizer=tf.keras.optimizers.legacy.Adam(config.learning_rate),
                     metrics= metrics_list,
                     loss=tf.keras.metrics.Mean(name='loss'),
                     run_eagerly = True)
-    checkpoint_filepath = f'/Users/yangingdai/Downloads/GAN_Tensorflow-Project-Template/script_tmp/stage_2/{config.dataset}/{config.clients_name}/checkpoint/checkpoint'
+    early_stopping = tf.keras.callbacks.EarlyStopping(monitor=monitor, patience=8, mode="max")
+    checkpoint_filepath = f'./script_tmp/stage_2/{config.dataset}/{config.clients_name}/{version_num}/checkpoint/checkpoint'
     model_checkpoint_callback = tf.keras.callbacks.ModelCheckpoint(
         filepath=checkpoint_filepath,
         save_weights_only=True,
@@ -233,10 +248,13 @@ def main(config, model, train_data, test_data, global_test_data):
         save_best_only=True)
 
     if config.validation_data == "local_test_data":
-        validation_data = test_data
+        validation_data = (test_x, test_y)
+        validation_batch_size = len(test_y)
     elif config.validation_data == "global_test_data":
-        validation_data = global_test_data
-
+        validation_data = (global_test_x, global_test_y)
+        validation_batch_size = len(global_test_y)
+    log_dir = "script_logs/fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir)
     if feature_data is None:
         if len(train_y) >  config.batch_size:
             all_train_data = train_data.batch(config.batch_size,drop_remainder=True)
@@ -259,11 +277,12 @@ def main(config, model, train_data, test_data, global_test_data):
         all_dataset.append(model.train_data)
         all_train_data  = tf.data.Dataset.zip(tuple(all_dataset)).batch(model.config.batch_size)   #,drop_remainder=True
                 
-    history = model.fit(all_train_data, epochs=config.cls_num_epochs, verbose=0, shuffle=True, validation_data=validation_data, callbacks=[CustomCallback(all_train_data), model_checkpoint_callback, LossAndErrorPrintingCallback() ])
-    test_score = model.evaluate(validation_data, callbacks=[LossAndErrorPrintingCallback(),CustomCallback()],return_dict=True, verbose=0)
+    history = model.fit(all_train_data, epochs=config.cls_num_epochs, verbose=0, shuffle=True, validation_data=validation_data, validation_batch_size = validation_batch_size, callbacks=[early_stopping, tensorboard_callback, CustomCallback(all_train_data), model_checkpoint_callback, LossAndErrorPrintingCallback() ])
+
+    test_score = model.evaluate(validation_data, batch_size = validation_batch_size, callbacks=[LossAndErrorPrintingCallback(),CustomCallback()],return_dict=True, verbose=0)
 
     model.load_weights(checkpoint_filepath)
-    test_score = model.evaluate(validation_data, callbacks=[LossAndErrorPrintingCallback(),CustomCallback()],return_dict=True, verbose=0)
+    test_score = model.evaluate(validation_data, batch_size = validation_batch_size, callbacks=[RecordTableCallback(), LossAndErrorPrintingCallback(),CustomCallback()],return_dict=True, verbose=0)
     np.save(f"script_tmp/stage_2/{config.dataset}/{config.clients_name}/{version_num}/real_features",model.get_features(train_x))   #save feature as a dict
     np.save(f"script_tmp/stage_2/{config.dataset}/{config.clients_name}/{version_num}/label",train_y)
 
@@ -460,17 +479,19 @@ if __name__ == '__main__':
     if 'clients_zero_feature_index' in args:
         train_x, train_y = zip(*train_data)
         test_x, test_y = zip(*test_data)
-        train_x, test_x = np.array(train_x), np.array(test_x)
+        train_x, test_x, data.test_x = np.array(train_x), np.array(test_x), np.array(data.test_x)
         if type(args.clients_zero_feature_index) == dict:
             print("mute feature len",len(args.clients_zero_feature_index[args.clients_name]))
             train_x[:,args.clients_zero_feature_index[args.clients_name]] = 0
             test_x[:,args.clients_zero_feature_index[args.clients_name]] = 0
+            data.test_x[:,args.clients_zero_feature_index[args.clients_name]] = 0
         else:  #
             print("all overlap, mute feature len",len(args.clients_zero_feature_index))
             train_x[:,args.clients_zero_feature_index] = 0
             test_x[:,args.clients_zero_feature_index] = 0
+            data.test_x[:,args.clients_zero_feature_index] = 0
           
-        train_data = zip(train_x, train_y)
+        train_data = list(zip(train_x, train_y))
         test_data = zip(test_x, test_y)
     global_test_data = zip(data.test_x, data.test_y)
     model = Classifier(args)

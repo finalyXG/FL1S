@@ -9,7 +9,8 @@ import random
 import copy
 import time
 from data_loader.data_generator import DataGenerator
-from tensorflow.keras.layers import Dense, Flatten, Conv2D, MaxPooling2D, Multiply, LeakyReLU, Embedding, Dropout,  Reshape, BatchNormalization
+from tensorflow import keras
+from tensorflow.keras.layers import Input, Dense, Flatten, Conv2D, MaxPooling2D, Multiply, LeakyReLU, Embedding, Dropout,  concatenate, Reshape, BatchNormalization, LayerNormalization, MultiHeadAttention, GlobalAveragePooling1D
 from tensorflow.python.training.tracking.data_structures import NoDependency
 
 class reduction_number(keras.metrics.Metric):
@@ -169,9 +170,12 @@ class Classifier(tf.keras.Model):
         self.train_y = train_y
 
     def set_loss_weight(self, class_rate):
-        self.config.importance_rate = (self.config.train_data_importance_rate * class_rate).astype('float32')
-        print("importance_rate",self.config.importance_rate)
-        self.loss_weights = tf.constant(self.config.importance_rate)
+        if self.config.client_loss_weight != int(0):
+            self.loss_weights = self.config.client_loss_weight
+        else:
+            self.config.importance_rate = (self.config.train_data_importance_rate * class_rate).astype('float32')
+            print("importance_rate",self.config.importance_rate)
+            self.loss_weights = tf.constant(self.config.importance_rate)
 
     def layer_build(self, kernel_initializer):
         self.cov_1 = Conv2D(16, kernel_size=(5, 5), input_shape=(self.config.image_size,self.config.image_size,), kernel_initializer=kernel_initializer)
@@ -392,7 +396,10 @@ class Classifier(tf.keras.Model):
         return result
     
     def test_step(self, data):
-        x, y = data
+        if len(data) == 2:
+            x, y = data
+        else:
+            x,y = data[0]
         predictions = self(x, training=False)
         y_true = tf.expand_dims(y, axis=1)
         if self.config.dataset == "elliptic":
