@@ -90,7 +90,6 @@ class DataGenerator:
                         clients_feature_index = list(client_i_no_overlap_feature_index) + list(overlap_feature_index)
                         self.config.clients_zero_feature_index[f"clients_%d"%(i+1)] = list(set(range(self.input.shape[1])) - set(clients_feature_index))
                         total_no_overlap_feature_index = list(set(total_no_overlap_feature_index) - set(client_i_no_overlap_feature_index))
-                        np.save(f"script_tmp/stage_1/{self.config.dataset}/clients_{i+1}/zero_feature_index",self.config.clients_zero_feature_index[f"clients_%d"%(i+1)])  
                 else:
                     self.config.clients_zero_feature_index = total_no_overlap_feature_index
                     np.save(f"script_tmp/stage_1/{self.config.dataset}/zero_feature_index",total_no_overlap_feature_index)  
@@ -100,11 +99,48 @@ class DataGenerator:
                 self.input = np.column_stack((self.input, [0]*self.input.shape[0]))
                 self.test_x = np.column_stack((self.test_x, [0]*self.test_x.shape[0]))
             config.input_feature_size = self.input.shape[-1]
+        
+        elif config.dataset == "real_data":
+            config.num_classes = 2
+            config.embedding_dim = 50
+
+            x = []
+            sample_num = 500
+            train_num = 300
+            max_transaction_num = 200
+            max_pp_num = 200
+            transaction_num_in_each_sample = np.random.choice(range(1,max_transaction_num+1), size=sample_num, replace=True)
+            pp_num_in_each_sample = np.random.choice(range(1,max_pp_num+1), size=sample_num, replace=True)
+            transaction_category = [str(x) for x in range(100,150)]
+            country_category = [str(x) for x in range(0,100)]
+            segment_category = ['IN', 'WX']
+            family_category = ['one', 'two', 'three']
+            p2_category = ['sss','xxx','yyy']
+            max_amount = 1000.0
+            #Generate dataset
+            for transaction_num, pp_num in zip(transaction_num_in_each_sample,pp_num_in_each_sample):
+                # print("transaction_num",transaction_num)
+                sample_dict = {}
+                sample_dict['tx'] = {}
+                sample_dict['tx']['country'] = np.random.choice(country_category, size=transaction_num, replace=True)
+                sample_dict['tx']['transaction'] = np.random.choice(transaction_category, size=transaction_num, replace=True)
+                sample_dict['tx']['amount'] = np.random.uniform(high=max_amount, size=transaction_num)
+                sample_dict['tx']['amount'] = [round(x,1) for x in sample_dict['tx']['amount']]
+                sample_dict['pp'] = {}
+                sample_dict['pp']['p1'] = np.random.uniform(high=max_amount, size=pp_num)
+                sample_dict['pp']['p1'] = [round(x,1) for x in sample_dict['pp']['p1']]
+                sample_dict['pp']['p2'] = np.random.choice(p2_category, size=pp_num, replace=True)
+                sample_dict['segment'] = random.choice(segment_category)
+                sample_dict['family'] = random.choice(family_category)
+                x.append(sample_dict)
+            y = np.array(np.random.choice([0,1], size=sample_num, replace=True)).astype('float32')
+            self.input, self.y = x[:train_num], y[:train_num]
+            self.test_x, self.test_y = x[train_num:], y[train_num:]
         else:
             raise NotImplementedError(
                 f"Dataset '{config.data_random_seed}' has not been implemented, please choose either mnist, svhn or fashion"
             )
-        if config.dataset != "elliptic":
+        if config.dataset != "elliptic" and config.dataset != "real_data":
             self.input = self.input  / 255 # Normalize the images to [0, 1]
             self.test_x = self.test_x  / 255
             self.dataset_train = list(zip(self.input, self.y))
@@ -161,7 +197,7 @@ class DataGenerator:
             # client_names = ['{}_{}'.format('clients', i+1) for i in range(self.config.num_clients)]
 
             # self.clients = {client_names[i] : dataset[i] for i in range(len(client_names))}
-        
+
     def next_batch(self, batch_size):
         idx = np.random.choice(len(self.y), batch_size)
         yield self.input[idx], self.y[idx]
