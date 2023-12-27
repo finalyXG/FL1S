@@ -107,9 +107,9 @@ class DataGenerator:
             x = []
             sample_num = 500
             train_num = 300
-            max_transaction_num = 200
+            config.max_transaction_num = 200
             max_pp_num = 200
-            transaction_num_in_each_sample = np.random.choice(range(1,max_transaction_num+1), size=sample_num, replace=True)
+            transaction_num_in_each_sample = np.random.choice(range(1,config.max_transaction_num+1), size=sample_num, replace=True)
             pp_num_in_each_sample = np.random.choice(range(1,max_pp_num+1), size=sample_num, replace=True)
             transaction_category = [str(x) for x in range(100,150)]
             country_category = [str(x) for x in range(0,100)]
@@ -132,10 +132,10 @@ class DataGenerator:
                 sample_dict['pp']['p2'] = np.random.choice(p2_category, size=pp_num, replace=True)
                 sample_dict['segment'] = random.choice(segment_category)
                 sample_dict['family'] = random.choice(family_category)
+                sample_dict['target'] = random.choice([0,1])
                 x.append(sample_dict)
-            y = np.array(np.random.choice([0,1], size=sample_num, replace=True)).astype('float32')
-            self.input, self.y = x[:train_num], y[:train_num]
-            self.test_x, self.test_y = x[train_num:], y[train_num:]
+            self.dataset_train = x[:train_num]
+            self.data_test  = x[train_num:]
         else:
             raise NotImplementedError(
                 f"Dataset '{config.data_random_seed}' has not been implemented, please choose either mnist, svhn or fashion"
@@ -153,10 +153,13 @@ class DataGenerator:
             else:
                 self.clients = self.create_clients()
         else:
-            self.dataset_train = list(zip(self.input, self.y))
-            self.data_test = list(zip(self.test_x, self.test_y))
-            if config.use_dirichlet_split_data:
-                self.clients = self.split_data_dirichlet()
+            if config.dataset != "real_data":
+                self.dataset_train = list(zip(self.input, self.y))
+                self.data_test = list(zip(self.test_x, self.test_y))
+                if config.use_dirichlet_split_data:
+                    self.clients = self.split_data_dirichlet()
+                else:
+                    self.clients = self.create_clients()
             else:
                 self.clients = self.create_clients()
 
@@ -210,10 +213,10 @@ class DataGenerator:
         # random.shuffle(data_train)
         # random.shuffle(data_test)
         # #shard data and place at each client
-        self.client_train_size = len(self.dataset_train)//self.config.num_clients
-        self.client_test_size = len(self.data_test) // self.config.num_clients
-        shards = [(self.dataset_train[train_index:train_index + self.config.client_train_num],self.data_test[test_index:test_index+ self.config.client_test_num]) for train_index,test_index in zip(range(0, self.client_train_size*self.config.num_clients, self.client_train_size),range(0, self.client_test_size*self.config.num_clients,self.client_test_size))]
-
+        self.config.client_train_size = len(self.dataset_train)//self.config.num_clients
+        self.config.client_test_size = len(self.data_test) // self.config.num_clients
+        self.config.total_test_size = len(self.data_test)
+        shards = [(self.dataset_train[train_index:train_index + self.config.client_train_size],self.data_test[test_index:test_index+ self.config.client_test_size]) for train_index,test_index in zip(range(0, self.config.client_train_size*self.config.num_clients, self.config.client_train_size),range(0, self.config.client_test_size*self.config.num_clients,self.config.client_test_size))]
         #number of clients must equal number of shards
         assert(len(shards) == len(client_names))
         return {client_names[i] : shards[i] for i in range(len(client_names))}
