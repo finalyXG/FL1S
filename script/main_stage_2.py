@@ -20,39 +20,44 @@ class CustomCallback(tf.keras.callbacks.Callback):
         model.changed_label0_num = 0
         model.original_label0_num = 0
         if self.dataset:
-            if model.feature_data and model.config.update_feature_by_epoch:
+            if model.feature_data is not None and model.config.update_feature_by_epoch:
                 feature_dataset = {}
                 np.random.seed(model.config.random_seed)
                 feature_idx = np.random.choice(range(model.config.total_features_num), size=model.train_data_num, replace=True)
-                for k, v in model.feature_data.items():
-                    v = copy.deepcopy(np.array(v, dtype=object)[feature_idx])
-                    feature, labels = zip(*v)
-                    v = tf.data.Dataset.from_tensor_slices(
-                        (np.array(feature), np.array(labels))).shuffle(len(labels))
-                    feature_dataset[k] = v
-                all_dataset = list(feature_dataset.values())
-                all_dataset.append(model.train_data)
-                all_train_data  = tf.data.Dataset.zip(tuple(all_dataset)).batch(model.config.batch_size)   #,drop_remainder=True
+                feature_data = np.array(model.feature_data, dtype=object)[feature_idx]
+                feature, labels = zip(*feature_data)
+                if model.config.dataset == "real_data":
+                    feature = np.array(feature, dtype=np.float32) 
+                feature_dataset = tf.data.Dataset.from_tensor_slices(
+                    (np.array(feature), np.array(labels))).shuffle(len(labels))
+
+                all_train_data  = tf.data.Dataset.zip(tuple([feature_dataset, model.train_data])).batch(model.config.batch_size)   #,drop_remainder=True
                 self.dataset = all_train_data
         return super().on_epoch_begin(epoch, logs)
 
     def on_epoch_end(self, epoch, logs=None):
         #save feature, feature center in cur_epoch model 
         if epoch in self.model.config.initial_client_ouput_feat_epochs:
-            path = f"/Users/yangingdai/Downloads/GAN_Tensorflow-Project-Template/script_tmp/stage_2/{self.model.config.dataset}/{self.model.config.clients_name}/assigned_epoch/{epoch}"
+            path = f"script_tmp/stage_2/{self.model.config.dataset}/{self.model.config.clients_name}/assigned_epoch/{epoch}"
             if not os.path.exists(path):
                 os.makedirs(path)
             model.save_weights(f"{path}/cp-{epoch:04d}.ckpt")
-            real_features = self.model.get_features(model.train_x)
-            np.save(f"{path}/real_features",real_features)
-            np.save(f"{path}/label",model.train_y)
+            if self.model.config.dataset != 'real_data':
+                real_features = model.get_features(model.train_x)
+                np.save(f"{path}/real_features",real_features)
+                np.save(f"{path}/label",model.train_y)
+            else:
+                feature, label = model.get_features(train_data)
+                np.save(f"{path}/real_features",feature)   #save feature as a dict
+                np.save(f"{path}/label",label)
         model.epochs.assign(epoch)
         for metric in model.metrics:
             metric.reset_states()
         for metric in model.compiled_metrics._metrics:
             metric.reset_states()
-        print("original class rate:",model.original_label0_num/model.original_label1_num )
-        print("changed class rate:",model.changed_label0_num/model.changed_label1_num )
+        if model.config.change_ground_truth:
+            print("original class rate:",model.original_label0_num/model.original_label1_num )
+            print("changed class rate:",model.changed_label0_num/model.changed_label1_num )
 
     def on_test_begin(self, logs=None):
         for metric in model.metrics:
@@ -103,53 +108,63 @@ def create_feature_dataset(config, totoal_feature_data, train_data):
     '''
     generate initial client feature to dataset
     '''
-    dataset_dict = {}
     indices, feature_idx = None, None
-    client_train_data_num = len(train_data)
-    for layer_num in config.features_ouput_layer_list:
-        feature_dataset = totoal_feature_data[layer_num]
-        config.total_features_num = len(feature_dataset)
-        if config.take_feature_ratio < 1 and indices is None:
-            num_feature_keep = int(config.total_features_num * config.take_feature_ratio)
-            indices = np.random.permutation(config.total_features_num)[
-                    :num_feature_keep
-                ]
-        if indices:  #take_feature_ratio
-            feature_dataset = np.array(feature_dataset, dtype=object)[indices]
-        if not config.update_feature_by_epoch and config.feature_match_train_data and feature_idx is None:
-            #Convert the number of initial client feature to be the same as client_data
-            feature_idx = np.random.choice(range(config.total_features_num), size=client_train_data_num, replace=True)
-        if feature_idx is not None:
-            feature_dataset = np.array(feature_dataset, dtype=object)[feature_idx]
-        if not config.update_feature_by_epoch:
-            feature, labels = zip(*feature_dataset)
-            feature_dataset = tf.data.Dataset.from_tensor_slices(
-                    (np.array(feature), np.array(labels)))
-        dataset_dict[layer_num] = feature_dataset
+    if config.dataset != "real_data":
+        client_train_data_num = len(train_data)
+    else:
+        client_train_data_num = train_data.reduce(tf.constant(0), lambda x, _: x + 1)
+    feature_dataset = totoal_feature_data
+    config.total_features_num = len(feature_dataset)
+    if config.take_feature_ratio < 1 and indices is None:
+        num_feature_keep = int(config.total_features_num * config.take_feature_ratio)
+        indices = np.random.permutation(config.total_features_num)[
+                :num_feature_keep
+            ]
+    if indices:  #take_feature_ratio
+        feature_dataset = np.array(feature_dataset, dtype=object)[indices]
+    if not config.update_feature_by_epoch and config.feature_match_train_data and feature_idx is None:
+        #Convert the number of initial client feature to be the same as client_data
+        feature_idx = np.random.choice(range(config.total_features_num), size=client_train_data_num, replace=True)
+    if feature_idx is not None:
+        feature_dataset = np.array(feature_dataset, dtype=object)[feature_idx]
+    if not config.update_feature_by_epoch:
+        feature, labels = zip(*feature_dataset)
+        if config.dataset == "real_data":
+            feature = np.array(feature, dtype=np.float32) 
+        feature_dataset = tf.data.Dataset.from_tensor_slices(
+                (np.array(feature), np.array(labels)))
 
     if config.feat_loss_weight != float(0) and not config.update_feature_by_epoch and not config.feature_match_train_data:
-        train_data_idx = np.random.choice(range(client_train_data_num), size=config.total_features_num, replace=True)
-        train_data = np.array(train_data, dtype=object)[train_data_idx]
-    return dataset_dict, train_data
+        if config.dataset != "real_data":
+            train_data_idx = np.random.choice(range(client_train_data_num), size=config.total_features_num, replace=True)
+            train_data = np.array(train_data, dtype=object)[train_data_idx]
+        else:
+            repeat_times = np.ceil(config.total_features_num/client_train_data_num)
+            train_data = train_data.repeat(repeat_times).shuffle(buffer_size=config.total_features_num).take(config.total_features_num)
+    return feature_dataset, train_data
 
 def get_teacher_list(config):
-    teacher = Classifier(config)
     teacher_list = []
     if config.teacher_1_model_path is not None:
+        teacher = Classifier(config)
         teacher.load_weights(tf.train.latest_checkpoint(config.teacher_1_model_path)).expect_partial()
-        teacher_list.append(copy.deepcopy(teacher))
+        teacher_list.append(teacher)
     if config.teacher_2_model_path is not None:
+        teacher = Classifier(config)
         teacher.load_weights(tf.train.latest_checkpoint(config.teacher_2_model_path)).expect_partial()
-        teacher_list.append(copy.deepcopy(teacher))
+        teacher_list.append(teacher)
     if config.teacher_3_model_path is not None:
+        teacher = Classifier(config)
         teacher.load_weights(tf.train.latest_checkpoint(config.teacher_3_model_path)).expect_partial()
-        teacher_list.append(copy.deepcopy(teacher))
+        teacher_list.append(teacher)
     if config.teacher_4_model_path is not None:
+        teacher = Classifier(config)
         teacher.load_weights(tf.train.latest_checkpoint(config.teacher_4_model_path)).expect_partial()
-        teacher_list.append(copy.deepcopy(teacher))
+        teacher_list.append(teacher)
     if config.teacher_5_model_path is not None:
+        teacher = Classifier(config)
         teacher.load_weights(tf.train.latest_checkpoint(config.teacher_5_model_path)).expect_partial()
-        teacher_list.append(copy.deepcopy(teacher))
+        teacher_list.append(teacher)
     if len(teacher_list) > 1:
         if config.teacher_repeat:
             teacher_idx = np.random.choice(range(len(teacher_list)), size=config.teacher_num, replace=True)
@@ -157,6 +172,52 @@ def get_teacher_list(config):
             teacher_idx = np.random.choice(range(len(teacher_list)), size=config.teacher_num, replace=False)
         teacher_list = np.array(teacher_list)[teacher_idx]
     return teacher_list
+
+def change_dict_architecture(x):
+    for q in x['tx'].keys():
+        x[f'tx.{q}'] = x['tx'][q]
+    del x['tx']
+    for q in x['pp'].keys():
+        x[f'pp.{q}'] = x['pp'][q]
+    del x['pp']
+    return x
+
+def generate_dataset(x):
+    def gen():
+        for i in x:
+            yield {'segment':tf.constant(i['segment']),
+                'family':tf.constant(i['family']),
+                'target':tf.constant(i['target']),
+                'tx':{
+                    'country':tf.ragged.constant([i['tx']['country']]),
+                    'transaction': tf.ragged.constant([i['tx']['transaction']]),
+                    'amount': tf.ragged.constant([i['tx']['amount']])
+                    },
+                'pp':{
+                    'p1':tf.ragged.constant([i['pp']['p1']]),
+                    'p2': tf.ragged.constant([i['pp']['p2']]),
+                    }
+                }
+    dataset = tf.data.Dataset.from_generator(
+        gen,
+        output_signature=(
+            {
+                'segment': tf.TensorSpec(shape=(), dtype=tf.string),
+                'family': tf.TensorSpec(shape=(), dtype=tf.string),
+                'target': tf.TensorSpec(shape=(), dtype=tf.int32),
+                'tx': {
+                    'country': tf.RaggedTensorSpec(shape=(1, None), dtype=tf.string),
+                    'transaction': tf.RaggedTensorSpec(shape=(1, None), dtype=tf.string),
+                    'amount': tf.RaggedTensorSpec(shape=(1, None), dtype=tf.float64),
+                },
+                'pp': {
+                    'p1': tf.RaggedTensorSpec(shape=(1, None), dtype=tf.float64),
+                    'p2': tf.RaggedTensorSpec(shape=(1, None), dtype=tf.string),
+                }
+            }
+        )
+    )
+    return dataset
 
 def main(config, model, train_data, test_data, global_test_data):
     tf.random.set_seed(config.random_seed)
@@ -172,7 +233,7 @@ def main(config, model, train_data, test_data, global_test_data):
     model.set_pre_features_central(pre_features_central)
 
     if config.feature_path is not None and config.feat_loss_weight != float(0):
-        feature_data = np.load(config.feature_path,allow_pickle=True).item()  #dict, key:feature_layer num, value: corresponding feature data
+        feature_data = np.load(config.feature_path,allow_pickle=True)#.item()  #dict, key:feature_layer num, value: corresponding feature data
         feature_data, train_data = create_feature_dataset(config, feature_data,  train_data)
     else:
         feature_data = None
@@ -183,30 +244,30 @@ def main(config, model, train_data, test_data, global_test_data):
     tf.random.set_seed(config.random_seed)
     np.random.seed(config.random_seed)
     random.seed(config.random_seed)
-    train_x, train_y = zip(*train_data)
-    model.set_train_x_train_y(train_x, train_y)
-    class_rate = train_y.count(0)/train_y.count(1)
-    model.set_train_data_num(len(train_y))
-    test_x, test_y = zip(*test_data)
-    global_test_x, global_test_y = zip(*global_test_data)
-    train_x, train_y = np.array(train_x),np.array(train_y)
-    test_x, test_y = np.array(test_x),np.array(test_y)
-    global_test_x, global_test_y = np.array(global_test_x), np.array(global_test_y)
-
-    train_data = tf.data.Dataset.from_tensor_slices((train_x,train_y)).shuffle(len(train_y))  #,drop_remainder=True
+    if config.dataset != 'real_data':
+        train_x, train_y = zip(*train_data)
+        model.set_train_x_train_y(train_x, train_y)
+        class_rate = train_y.count(0)/train_y.count(1)
+        model.set_train_data_num(len(train_y))
+        test_x, test_y = zip(*test_data)
+        global_test_x, global_test_y = zip(*global_test_data)
+        train_x, train_y = np.array(train_x),np.array(train_y)
+        test_x, test_y = np.array(test_x),np.array(test_y)
+        global_test_x, global_test_y = np.array(global_test_x), np.array(global_test_y)
+        train_data = tf.data.Dataset.from_tensor_slices((train_x,train_y)).shuffle(len(train_y))  #,drop_remainder=True
     model.set_train_data(train_data)
-    # test_data = tf.data.Dataset.from_tensor_slices(
-    #     (test_x, test_y)).batch(config.batch_size)
-    # global_test_data = tf.data.Dataset.from_tensor_slices(
-    #     (global_test_x,global_test_y)).batch(config.batch_size)
 
-    if config.dataset == "elliptic":
-        model.set_loss_weight(class_rate)
+    if config.dataset == "elliptic" or config.dataset == "real_data":
         metrics_list = [reduction_number(), reduction_rate(), epochs(), score0_target1_num(), smaller_half_number(),
                         tf.keras.metrics.BinaryAccuracy(name='cls_accuracy'),
                         tf.keras.metrics.Recall(name='recall'),
                         tf.keras.metrics.Precision(name='precision'),
                         tf.keras.metrics.F1Score(threshold=0.5, name='f1score')]
+        if config.dataset == "elliptic":
+             model.set_loss_weight(class_rate)
+        else:
+            train_data_num = train_data.reduce(tf.constant(0), lambda x, _: x + 1)
+            model.set_train_data_num(train_data_num)
     else:
         metrics_list = [tf.keras.metrics.SparseCategoricalAccuracy(name='cls_accuracy')]
     
@@ -248,34 +309,40 @@ def main(config, model, train_data, test_data, global_test_data):
         save_best_only=True)
 
     if config.validation_data == "local_test_data":
-        validation_data = (test_x, test_y)
-        validation_batch_size = len(test_y)
+        if config.dataset == "real_data":
+            validation_data = test_data
+            validation_batch_size = config.client_test_size
+        else:
+            validation_data = (test_x, test_y)
+            validation_batch_size = len(test_y)
     elif config.validation_data == "global_test_data":
-        validation_data = (global_test_x, global_test_y)
-        validation_batch_size = len(global_test_y)
+        if config.dataset == "real_data":
+            validation_data = global_test_data
+            validation_batch_size = config.total_test_size
+        else:
+            validation_data = (global_test_x, global_test_y)
+            validation_batch_size = len(global_test_y)
+    validation_data = validation_data.batch(validation_batch_size)
+
     log_dir = "script_logs/fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir)
+
     if feature_data is None:
         if len(train_y) >  config.batch_size:
             all_train_data = train_data.batch(config.batch_size,drop_remainder=True)
         else:
             all_train_data = train_data.batch(config.batch_size)
     elif not config.update_feature_by_epoch:
-        all_dataset = list(feature_data.values())
-        all_dataset.append(train_data)
-        all_train_data  = tf.data.Dataset.zip(tuple(all_dataset)).batch(config.batch_size)
+        all_train_data  = tf.data.Dataset.zip(tuple([feature_data, train_data])).batch(config.batch_size)
     elif config.update_feature_by_epoch:
-        feature_dataset = {}
         feature_idx = np.random.choice(range(model.config.total_features_num), size=model.train_data_num, replace=True)
-        for k, v in model.feature_data.items():
-            v = copy.deepcopy(np.array(v, dtype=object)[feature_idx])
-            feature, labels = zip(*v)
-            v = tf.data.Dataset.from_tensor_slices(
-                (np.array(feature), np.array(labels)))#.shuffle(len(labels))
-            feature_dataset[k] = v
-        all_dataset = list(feature_dataset.values())
-        all_dataset.append(model.train_data)
-        all_train_data  = tf.data.Dataset.zip(tuple(all_dataset)).batch(model.config.batch_size)   #,drop_remainder=True
+        feature_data = np.array(model.feature_data, dtype=object)[feature_idx]
+        feature, labels = zip(*feature_data)
+        if model.config.dataset == "real_data":
+            feature = np.array(feature, dtype=np.float32) 
+        feature_dataset = tf.data.Dataset.from_tensor_slices(
+            (np.array(feature), np.array(labels))).shuffle(len(labels))
+        all_train_data  = tf.data.Dataset.zip(tuple([feature_dataset, model.train_data])).batch(model.config.batch_size)   #,drop_remainder=True
                 
     history = model.fit(all_train_data, epochs=config.cls_num_epochs, verbose=0, shuffle=True, validation_data=validation_data, validation_batch_size = validation_batch_size, callbacks=[early_stopping, tensorboard_callback, CustomCallback(all_train_data), model_checkpoint_callback, LossAndErrorPrintingCallback() ])
 
@@ -283,8 +350,13 @@ def main(config, model, train_data, test_data, global_test_data):
 
     model.load_weights(checkpoint_filepath)
     test_score = model.evaluate(validation_data, batch_size = validation_batch_size, callbacks=[RecordTableCallback(), LossAndErrorPrintingCallback(),CustomCallback()],return_dict=True, verbose=0)
-    np.save(f"script_tmp/stage_2/{config.dataset}/{config.clients_name}/{version_num}/real_features",model.get_features(train_x))   #save feature as a dict
-    np.save(f"script_tmp/stage_2/{config.dataset}/{config.clients_name}/{version_num}/label",train_y)
+    if config.dataset != 'real_data':
+        np.save(f"script_tmp/stage_2/{config.dataset}/{config.clients_name}/{version_num}/real_features",model.get_features(train_x))   #save feature as a dict
+        np.save(f"script_tmp/stage_2/{config.dataset}/{config.clients_name}/{version_num}/label",train_y)
+    else:
+        feature, label = model.get_features(train_data)
+        np.save(f"script_tmp/stage_2/{config.dataset}/{config.clients_name}/{version_num}/real_features",feature)   #save feature as a dict
+        np.save(f"script_tmp/stage_2/{config.dataset}/{config.clients_name}/{version_num}/label",label)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -298,6 +370,43 @@ if __name__ == '__main__':
         "--dataset",
         type=str,
         default="mnist"
+    )
+    parser.add_argument(
+        '--model_type',
+        type=str,
+        default='MHA01',
+        help='''
+        MHA01: use MHA for each subsequence;
+        MHA02: use MHA for each type of sequence
+        '''
+    )
+    parser.add_argument(
+        "--disable_lv1_namaes",
+        type=str,
+        nargs='+',
+        default=[""]
+    )
+    parser.add_argument(
+        "--disable_pp_namaes",
+        type=str,
+        nargs='+',
+        default=[""]
+    )
+    parser.add_argument(
+        "--disable_tx_namaes",
+        type=str,
+        nargs='+',
+        default=[""]
+    )
+    parser.add_argument(
+        "--real_data_feature_type",
+        type=str,
+        nargs='+',
+        default=['before_attention'],
+        help='''
+        before_attention
+        after_attention
+        '''
     )
     parser.add_argument(
         "--input_feature_overlap_num",
@@ -476,24 +585,46 @@ if __name__ == '__main__':
     data = DataGenerator(args)
     client_data = data.clients[args.clients_name]
     (train_data, test_data) = client_data
-    if 'clients_zero_feature_index' in args:
-        train_x, train_y = zip(*train_data)
-        test_x, test_y = zip(*test_data)
-        train_x, test_x, data.test_x = np.array(train_x), np.array(test_x), np.array(data.test_x)
-        if type(args.clients_zero_feature_index) == dict:
-            print("mute feature len",len(args.clients_zero_feature_index[args.clients_name]))
-            train_x[:,args.clients_zero_feature_index[args.clients_name]] = 0
-            test_x[:,args.clients_zero_feature_index[args.clients_name]] = 0
-            data.test_x[:,args.clients_zero_feature_index[args.clients_name]] = 0
-        else:  #
-            print("all overlap, mute feature len",len(args.clients_zero_feature_index))
-            train_x[:,args.clients_zero_feature_index] = 0
-            test_x[:,args.clients_zero_feature_index] = 0
-            data.test_x[:,args.clients_zero_feature_index] = 0
-          
-        train_data = list(zip(train_x, train_y))
-        test_data = zip(test_x, test_y)
-    global_test_data = zip(data.test_x, data.test_y)
+    if args.dataset != 'real_data':
+        if 'clients_zero_feature_index' in args:
+            train_x, train_y = zip(*train_data)
+            test_x, test_y = zip(*test_data)
+            train_x, test_x, data.test_x = np.array(train_x), np.array(test_x), np.array(data.test_x)
+            if type(args.clients_zero_feature_index) == dict:
+                print("mute feature len",len(args.clients_zero_feature_index[args.clients_name]))
+                train_x[:,args.clients_zero_feature_index[args.clients_name]] = 0
+                test_x[:,args.clients_zero_feature_index[args.clients_name]] = 0
+                data.test_x[:,args.clients_zero_feature_index[args.clients_name]] = 0
+            else:  #
+                print("all overlap, mute feature len",len(args.clients_zero_feature_index))
+                train_x[:,args.clients_zero_feature_index] = 0
+                test_x[:,args.clients_zero_feature_index] = 0
+                data.test_x[:,args.clients_zero_feature_index] = 0
+            
+            train_data = list(zip(train_x, train_y))
+            test_data = zip(test_x, test_y)
+        global_test_data = zip(data.test_x, data.test_y)
+    else:
+        args.features_ouput_layer_list = args.real_data_feature_type
+        train_data = generate_dataset(train_data)
+        test_data = generate_dataset(test_data)
+        global_test_data = generate_dataset(data.data_test)
+        train_data = train_data.map(change_dict_architecture)
+        test_data = test_data.map(change_dict_architecture)
+        global_test_data = global_test_data.map(change_dict_architecture)
+        args.feature_space = tf.keras.utils.FeatureSpace(
+            features={
+                "segment": tf.keras.utils.FeatureSpace.string_categorical(output_mode='int'),
+                "family": tf.keras.utils.FeatureSpace.string_categorical(output_mode='int'),
+                'target': tf.keras.utils.FeatureSpace.float(),
+                'tx.country': tf.keras.utils.FeatureSpace.string_categorical(output_mode='int'),
+                'tx.transaction': tf.keras.utils.FeatureSpace.string_categorical(output_mode='int'),
+                'tx.amount': tf.keras.utils.FeatureSpace.float(),
+                'pp.p1': tf.keras.utils.FeatureSpace.float(),
+                'pp.p2': tf.keras.utils.FeatureSpace.string_categorical(output_mode='int'),
+            },
+            output_mode='dict'
+        )
+        args.feature_space.adapt(train_data)
     model = Classifier(args)
-
     main(args, model, train_data, test_data, global_test_data)

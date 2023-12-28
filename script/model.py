@@ -122,9 +122,16 @@ class Classifier(tf.keras.Model):
         self.epochs = tf.Variable(initial_value=0, trainable=False)
         # init metric
         if config.dataset == "elliptic":
-            self.layer_build = self.layer_build_elliptic
             if config.whether_use_transformer_model:
                 self.layer_build = self.layer_build_elliptic_transformer
+            else:
+                self.layer_build = self.layer_build_elliptic
+        elif config.dataset == "real_data":
+            self.layer_build = self.layer_build_real_data
+            self.call = self.call_real_data
+            self.call_2 = self.call_2_real_data
+            self.get_features = self.get_features_real_data
+
         # init kernel_initializer and model layer
         if config.use_same_kernel_initializer:
             self.layer_build("glorot_uniform")
@@ -158,6 +165,8 @@ class Classifier(tf.keras.Model):
         self.feature_data = NoDependency(feature_data)
         if type(feature_data) == dict:
             self.feature_data_keys = feature_data.keys()
+        elif self.config.dataset == "real_data":
+            self.feature_data_keys = self.config.real_data_feature_type
 
     def set_train_data_num(self, train_data_num):
         self.train_data_num = train_data_num
@@ -168,6 +177,9 @@ class Classifier(tf.keras.Model):
     def set_train_x_train_y(self, train_x, train_y):
         self.train_x = train_x
         self.train_y = train_y
+
+    def set_version_num(self, version_num):
+        self.version_num = version_num
 
     def set_loss_weight(self, class_rate):
         if self.config.client_loss_weight != int(0):
@@ -202,6 +214,36 @@ class Classifier(tf.keras.Model):
         self.dense_2 = keras.layers.Dense(2, activation="linear", kernel_initializer=kernel_initializer)
         self.feature_layers = [self.dense_1,  self.attention1, self.dense_2] #self.attention1, self.dropout1,
 
+    def layer_build_real_data(self, kernel_initializer):
+        depth = 10
+        if self.config.total_test_size > self.config.batch_size:#must larger than batch_size and  global_sample_num
+            pos_encoding_dim_1 = self.config.total_test_size
+        else:
+            pos_encoding_dim_1 = self.config.batch_size   
+        self.pos_encoding = self.positional_encoding(self.config.max_transaction_num, depth)
+        self.pos_encoding = tf.repeat(self.pos_encoding[tf.newaxis, :, :], pos_encoding_dim_1, axis=0)
+        self.country_embedding = tf.keras.layers.Embedding(input_dim=self.config.feature_space.features['tx.country'].preprocessor.vocabulary_size(), output_dim=4, name = "tx.country_embedding",trainable=True)
+        self.transaction_embedding = tf.keras.layers.Embedding(input_dim=self.config.feature_space.features['tx.transaction'].preprocessor.vocabulary_size(), output_dim=4, name = "tx.transaction_embedding",trainable=True)
+        self.segment_embedding = tf.keras.layers.Embedding(input_dim=self.config.feature_space.features['segment'].preprocessor.vocabulary_size(), output_dim=2, name = "segment_embedding",trainable=True)
+        self.family_embedding = tf.keras.layers.Embedding(input_dim=self.config.feature_space.features['family'].preprocessor.vocabulary_size(), output_dim=2, name = "family_embedding",trainable=True)
+        self.p2_embedding = tf.keras.layers.Embedding(input_dim=self.config.feature_space.features['pp.p2'].preprocessor.vocabulary_size(), output_dim=2, name = "pp.p2_embedding",trainable=True)
+        self.embedding_layers = [self.country_embedding,self.transaction_embedding,self.segment_embedding,self.family_embedding, self.p2_embedding]
+
+        self.country_attention = tf.keras.layers.MultiHeadAttention(num_heads=4, key_dim=2, dropout=0.2, output_shape=(2), name = "tx.country_attention")
+        self.transaction_attention = tf.keras.layers.MultiHeadAttention(num_heads=4, key_dim=2, dropout=0.2, output_shape=(2),  name = "tx.transaction_attention")
+        self.amount_attention = tf.keras.layers.MultiHeadAttention(num_heads=4, key_dim=2, dropout=0.2, output_shape=(2),  name = "tx.amount_attention")
+        self.p1_attention = tf.keras.layers.MultiHeadAttention(num_heads=4, key_dim=2, dropout=0.2, output_shape=(2),  name = "pp.p1_attention")
+        self.p2_attention = tf.keras.layers.MultiHeadAttention(num_heads=4, key_dim=2, dropout=0.2, output_shape=(2),  name = "pp.p2_attention")
+        self.dict_feature_attention_layers = [self.country_attention,self.transaction_attention,self.amount_attention,self.p1_attention,self.p2_attention]
+
+        self.tx_attention = tf.keras.layers.MultiHeadAttention(num_heads=4, key_dim=2, dropout=0.2, output_shape=(2), name = "tx_attention")
+        self.pp_attention = tf.keras.layers.MultiHeadAttention(num_heads=4, key_dim=2, dropout=0.2, output_shape=(2), name = "pp_attention")
+
+        self.attention2 = tf.keras.layers.MultiHeadAttention(num_heads=4, key_dim=2, dropout=0.2, output_shape=(64),  name = "attention2")
+        self.dense_1 = keras.layers.Dense(2, activation="linear", kernel_initializer=kernel_initializer)
+
+        self.feature_layers = [self.attention2, self.dense_1] 
+    
     def init_saver(self):
         # here you initialize the tensorflow saver that will be used in saving the checkpoints.
         self.saver = tf.train.Checkpoint(max_to_keep=tf.Variable(self.config.max_to_keep , dtype=tf.int64)) 
@@ -239,7 +281,82 @@ class Classifier(tf.keras.Model):
             else:
                 x = layer(x)
         return x
-    
+
+    def positional_encoding(self, max_length, depth):
+        depth = depth/2
+        positions = np.arange(max_length)[:, np.newaxis]     # (seq, 1)
+        depths = np.arange(depth)[np.newaxis, :]/depth   # (1, depth)
+        angle_rates = 1 / (10000**depths)         # (1, depth)
+        angle_rads = positions * angle_rates      # (pos, depth)
+        pos_encoding = np.concatenate(
+            [np.sin(angle_rads), np.cos(angle_rads)],
+            axis=-1) 
+        return tf.cast(pos_encoding, dtype=tf.float32)
+
+    def concat_real_data_sequence(self, bd):
+        #embedding str type faeture
+        tmp = {}
+        for k, v in bd.items():
+            tmp[k] = v
+        
+        for embedding_layer in self.embedding_layers:
+            k = embedding_layer.name.split('_')[0]
+            tmp[k] = embedding_layer(bd[k])
+            if len(tmp[k].shape) > 3:  #for subsequence
+                tmp[k] = tf.squeeze(tmp[k])
+            tmp[k] += self.pos_encoding[:tmp[k].shape[0], :tmp[k].shape[1],:tmp[k].shape[2]]
+
+        tx_features_list = []
+        pp_features_list = []
+        other_feature_list = []
+        for k,v in tmp.items():
+            if k not in self.config.disable_lv1_namaes and k.split(".")[0] not in self.config.disable_lv1_namaes:
+                if k.split(".")[0] == 'tx':
+                    if k.split(".")[1] not in self.config.disable_tx_namaes:
+                        tx_features_list.append(v)
+                elif k.split(".")[0] == 'pp':
+                    if k.split(".")[1] not in self.config.disable_pp_namaes:
+                        pp_features_list.append(v)
+                else:
+                    other_feature_list.append(v)
+
+        if self.config.model_type == 'MHA02':
+            attention2_input_list = other_feature_list
+            if tx_features_list:
+                tx_features = tf.concat(tx_features_list, -1)
+                tx_features = tf.concat(tx_features_list, -1)
+                tx_output = self.tx_attention(tx_features[:,:1,:], tx_features, attention_mask=self.attention_mask['tx.amount'])
+                attention2_input_list.append(tx_output)
+
+            if pp_features_list:
+                pp_features = tf.concat(pp_features_list, -1)
+                pp_output = self.pp_attention(pp_features[:,:1,:], pp_features, attention_mask=self.attention_mask['pp.p1'])
+                attention2_input_list.append(pp_output)
+            attention2_input = tf.concat(attention2_input_list, 1)
+        elif self.config.model_type == 'MHA01':
+            dict_feature_ouput = []
+            for attention_layer in self.dict_feature_attention_layers:
+                k = attention_layer.name.split("_")[0]
+                if 'tx' in self.config.disable_lv1_namaes and k.split(".")[0] == 'tx':
+                    continue
+                if 'pp' in self.config.disable_lv1_namaes and k.split(".")[0] == 'pp':
+                    continue
+                if k.split(".")[0] == 'tx' and k.split(".")[1] in self.config.disable_tx_namaes:
+                    continue
+                if k.split(".")[0] == 'pp' and k.split(".")[1] in self.config.disable_pp_namaes:
+                    continue
+                output = attention_layer(tmp[k][:,:1,:],tmp[k], attention_mask=self.attention_mask[k])
+                dict_feature_ouput.append(output)
+            attention2_input = tf.concat(dict_feature_ouput + other_feature_list, 1)
+        return attention2_input
+
+    def call_real_data(self, bd):
+        attention2_input = self.concat_real_data_sequence(bd)
+        output = self.attention2(attention2_input[:,:1,:], attention2_input)
+        output = tf.squeeze(output)
+        output = self.dense_1(output)
+        return output
+
     def call_2(self, layer_num, x):
         for layer in self.feature_layers[layer_num:]:
             if "attention" in layer.name:
@@ -250,8 +367,40 @@ class Classifier(tf.keras.Model):
                 x = layer(x)
         return x
 
+    def call_2_real_data(self, layer_num, x):
+        if layer_num == 'before_attention':
+            x = self.attention2(x[:,:1,:], x)
+            x = tf.squeeze(x)
+        x = self.dense_1(x)
+        return x
+    
+    def pre_preccess_real_data(self, batch_data):
+        self.attention_mask = {}
+        for k,v in batch_data.items():
+            if isinstance(v,tf.RaggedTensor):
+                self.attention_mask[k] = tf.ones(tf.shape(v), dtype=tf.int32)
+                self.attention_mask[k] = self.attention_mask[k].to_tensor(default_value=0)
+                if v.dtype == 'string':
+                    batch_data[k] = batch_data[k].to_tensor(default_value='-1')
+                else:
+                    batch_data[k] = batch_data[k].to_tensor(default_value=-1)
+        batch_data = self.config.feature_space(batch_data)
+
+        y = tf.identity(tf.squeeze(batch_data['target']))
+        y = tf.cast(y, dtype=tf.float32)
+        del batch_data['target']
+        #set float type feature
+        for k,v in batch_data.items():
+            if v.dtype != 'string':
+                batch_data[k] = tf.cast(tf.squeeze(batch_data[k] ),dtype=tf.float32)
+                batch_data[k] = tf.expand_dims(batch_data[k], axis=-1)  #(32, 197, 1)
+        return batch_data,y
+    
     def train_step_stage_1(self, batch_data):
-        x, y = batch_data
+        if self.config.dataset == "real_data":
+            x, y = self.pre_preccess_real_data(batch_data)
+        else:
+            x, y = batch_data
         result = {}
         if self.config.skip_if_all_0 and len(y[y==0]) == self.config.batch_size:
             for metric in self.metrics:
@@ -264,7 +413,7 @@ class Classifier(tf.keras.Model):
             predictions = predictions / self.config.temperature
             predictions = tf.nn.softmax(predictions)
             y_true = tf.expand_dims(y, axis=1)
-            if self.config.dataset == "elliptic":   
+            if self.config.dataset == "elliptic" or self.config.dataset == "real_data":   
                 cfc = tf.keras.losses.CategoricalFocalCrossentropy(alpha = [1,self.config.client_loss_weight], gamma=self.config.gamma) #reduction=tf.keras.losses.Reduction.NONE
                 y_true_one_hot = tf.keras.utils.to_categorical(y_true, self.config.num_classes)
                 loss = cfc(y_true=y_true_one_hot, y_pred=predictions)
@@ -296,10 +445,13 @@ class Classifier(tf.keras.Model):
         return result
 
     def train_step_stage_2(self, batch_data):
-        if type(batch_data[0]) != tuple:
-            x, y = batch_data
-        else:  #type(batch_data[0]) == tuple  means batch_data contains feature dataset
-            x, y = batch_data[-1]  #last element in batch_data is client train_data
+        if self.config.dataset == "real_data":
+            x, y = self.pre_preccess_real_data(batch_data[-1])
+        else:
+            if type(batch_data[0]) != tuple:
+                x, y = batch_data
+            else:  #type(batch_data[0]) == tuple  means batch_data contains feature dataset
+                x, y = batch_data[-1]  #last element in batch_data is client train_data
         result = {}
         if self.config.skip_if_all_0 and len(y[y==0]) == self.config.batch_size:
             for metric in self.metrics:
@@ -310,6 +462,8 @@ class Classifier(tf.keras.Model):
             predictions = self(x, training=True)
             y_change = np.array(tf.identity(y))
             for teacher in self.teacher_list:
+                if self.config.dataset == "real_data":
+                    teacher.attention_mask = self.attention_mask
                 if self.config.change_ground_truth:
                     teacher_predictions = teacher(x, training=False)
                     teacher_predictions = np.argmax(teacher_predictions, axis=1)
@@ -326,17 +480,17 @@ class Classifier(tf.keras.Model):
                 
                 if self.config.hidden_rep_loss_weight != float(0):
                     teacher_features = teacher.get_features(x)
-                    student_feature = self.get_features(x)
-                    for layer_num, feature in teacher_features.items():
-                        teacher_features = tf.reshape(feature, [-1,])
-                        student_feature = tf.reshape(student_feature[layer_num], [-1,])
-                        cos_sim = tf.tensordot(teacher_features, student_feature,axes=1)/(tf.linalg.norm(teacher_features)*tf.linalg.norm(student_feature)+0.001)
+                    student_features = self.get_features(x)
+                    for layer_num, t_feature in teacher_features.items():
+                        t_feature = tf.reshape(t_feature, [-1,])
+                        s_feature = tf.reshape(student_features[layer_num], [-1,])
+                        cos_sim = tf.tensordot(t_feature, s_feature,axes=1)/(tf.linalg.norm(t_feature)*tf.linalg.norm(s_feature)+0.001)
                         hidden_rep_loss = 1 - cos_sim
                         loss += self.config.hidden_rep_loss_weight * hidden_rep_loss
             predictions = predictions / self.config.temperature
             predictions = tf.nn.softmax(predictions)
             y_true = tf.expand_dims(y, axis=1)
-            if self.config.dataset == "elliptic":
+            if self.config.dataset == "elliptic" or self.config.dataset == "real_data":
                 cfc = tf.keras.losses.CategoricalFocalCrossentropy(alpha = [1,self.config.client_loss_weight], gamma=self.config.gamma)
                 if self.config.change_ground_truth:
                     index = tf.where(tf.equal(y, 1)).numpy() 
@@ -369,13 +523,17 @@ class Classifier(tf.keras.Model):
                 for layer_num, (features, features_label) in zip(self.feature_data_keys, batch_data[:-1]):
                     feature_predictions = self.call_2(layer_num, features)   #get prediction through feature in layer_num output
                     feature_predictions = tf.nn.softmax(feature_predictions)
-                    if self.config.dataset != "elliptic":
+                    if self.config.dataset != "elliptic" or self.config.dataset != "real_data":
                         feature_loss = self.feature_loss_fn_cls(features_label, feature_predictions)
                     else:
                         feature_true = tf.expand_dims(features_label, axis=1)
-                        feature_predictions = feature_predictions[:,1]
-                        feature_predictions = tf.expand_dims(feature_predictions, axis=1)
-                        feature_loss = tf.nn.weighted_cross_entropy_with_logits(labels=feature_true, logits=feature_predictions, pos_weight=self.loss_weights)
+
+                        feature_true = tf.keras.utils.to_categorical(feature_true, self.config.num_classes)
+                        feature_loss = cfc(y_true=feature_true, y_pred=feature_predictions)
+
+                        # feature_predictions = feature_predictions[:,1]
+                        # feature_predictions = tf.expand_dims(feature_predictions, axis=1)
+                        # feature_loss = tf.nn.weighted_cross_entropy_with_logits(labels=feature_true, logits=feature_predictions, pos_weight=self.loss_weights)
                     loss += (feature_loss*self.config.feat_loss_weight)
                     total_feature_loss += feature_loss
 
@@ -396,13 +554,16 @@ class Classifier(tf.keras.Model):
         return result
     
     def test_step(self, data):
-        if len(data) == 2:
-            x, y = data
+        if self.config.dataset == "real_data":
+            x, y = self.pre_preccess_real_data(data)
         else:
-            x,y = data[0]
+            if len(data) == 2:
+                x, y = data
+            else:
+                x,y = data[0]
         predictions = self(x, training=False)
         y_true = tf.expand_dims(y, axis=1)
-        if self.config.dataset == "elliptic":
+        if self.config.dataset == "elliptic" or self.config.dataset == "real_data":
             predictions = tf.nn.softmax(predictions)
             cfc = tf.keras.losses.CategoricalFocalCrossentropy(alpha = [1,self.config.client_loss_weight],  gamma=self.config.gamma)
             y_true_one_hot = tf.keras.utils.to_categorical(y_true, self.config.num_classes)
@@ -441,15 +602,51 @@ class Classifier(tf.keras.Model):
             feature_list[features_ouput_layer_num] = x
         return feature_list
 
+    def get_features_real_data(self, data):
+        if isinstance(data, dict):  ##for batched data
+            features = self.concat_real_data_sequence(data)
+            feature_dict = {}
+            for type_name in self.config.real_data_feature_type:
+                if type_name == 'before_attention':
+                    feature_dict[type_name] = features
+                if type_name == 'after_attention':
+                    after_attention_features = self.attention2(features[:,:1,:], features)
+                    after_attention_features = tf.squeeze(after_attention_features)
+                    feature_dict[type_name] = after_attention_features
+            return feature_dict
+        else:  #data == whole unproccess train_data
+            data_num = data.reduce(tf.constant(0), lambda x, _: x + 1)
+            data = data.batch(tf.cast(data_num, dtype= tf.int64))  #set as one batch
+            for num, i in enumerate(data):
+                assert(num == 0)
+                bd, y = self.pre_preccess_real_data(i)
+                features = self.concat_real_data_sequence(bd)
+            feature_dict = {}
+            for type_name in self.config.real_data_feature_type:
+                if type_name == 'before_attention':
+                    feature_dict[type_name] = features
+                if type_name == 'after_attention':
+                    after_attention_features = self.attention2(features[:,:1,:], features)
+                    after_attention_features = tf.squeeze(after_attention_features)
+                    feature_dict[type_name] = after_attention_features
+            for k,v in feature_dict.items():
+                feature_dict[k] = tf.reshape(v,[v.shape[0],-1])
+            return feature_dict, y
+
     def count_features_central_distance(self, features_central, x, y):
         feature = self.get_features(x)
         accumulate_loss = 0
         for k,v in feature.items():
             for vector,label in zip(v,y): 
-                pre_vector = features_central[k][label.numpy()]
+                if self.config.stage == 1:
+                    if self.config.dataset != "real_data":
+                        label = label.numpy()
+                    pre_vector = features_central[k][label]
+                elif self.config.stage == 2: 
+                    pre_vector = features_central[label.numpy()]  
                 vector = tf.reshape(vector, [-1,])
                 pre_vector = tf.reshape(pre_vector, [-1,])
-                cos_sim = tf.tensordot(vector/(tf.linalg.norm(vector)+1e-6), pre_vector/(tf.linalg.norm(pre_vector)+1e-6),axes=1)#/(tf.linalg.norm(vector)*tf.linalg.norm(pre_vector)+1e-9) #tf.tensordot(vector, pre_vector,axes=1)
+                cos_sim = tf.tensordot(vector/(tf.linalg.norm(vector)+1e-6), pre_vector/(tf.linalg.norm(pre_vector)+1e-6),axes=1)
                 accumulate_loss += 1 - cos_sim
         return accumulate_loss / len(y)
 
@@ -482,13 +679,10 @@ class GAN(tf.keras.Model):
         self.loss_fn_categorical = loss_fn_categorical
         self.binary_accuracy = binary_accuracy
         self.categorical_accuracy = categorical_accuracy
-    
-    def set_train_y(self, train_y):
-        self.train_y = train_y
 
-    def generate_fake_features(self):
-        noise = tf.random.normal([len(self.train_y), self.latent_dim])
-        y = tf.expand_dims(self.train_y, axis=1)
+    def generate_fake_features(self, y):
+        noise = tf.random.normal([len(y), self.latent_dim])
+        y = tf.expand_dims(y, axis=1)
         seed = tf.concat(
             [noise, y], axis=1
             )
@@ -504,7 +698,7 @@ class GAN(tf.keras.Model):
         and added to the discriminator loss.
         """
         # Get the interpolated image
-        alpha = tf.random.normal([self.config.batch_size, 1], 0.0, 1.0)
+        alpha = tf.random.normal([real_features.shape[0], 1], 0.0, 1.0)
         diff = generated_features - real_features
         interpolated = real_features + alpha * diff
         with tf.GradientTape() as gp_tape:
@@ -523,15 +717,22 @@ class GAN(tf.keras.Model):
     @tf.function
     # Modify Train step for GAN
     def train_step(self,data):
-        x, y = data
+        if self.config.dataset == "real_data":
+            # x, y = self.cls.pre_preccess_real_data(data)
+            real_features, y = data
+        else:
+            x, y = data
+            #use cls model to generate real features
+            real_features = self.cls.get_features(x)
         y = tf.expand_dims(y, axis=1)
-        #use cls model to generate real features
-        real_features = self.cls.get_features(x)
         if len(real_features) == 1:
-            real_features = real_features[self.config.features_ouput_layer_list[0]]
+            if self.config.dataset != "real_data":
+                real_features = real_features[self.config.features_ouput_layer_list[0]]
+            else:
+                real_features = real_features[self.config.real_data_feature_type[0]]
         # Train the discriminator first.
         for i in range(self.config.discriminator_extra_steps):
-            noise = tf.random.normal([self.config.batch_size, self.latent_dim])
+            noise = tf.random.normal([y.shape[0], self.latent_dim])
             random_vector_labels = tf.concat(
             [noise, y], axis=1
             )
@@ -545,7 +746,7 @@ class GAN(tf.keras.Model):
 
                 # Assemble labels discriminating real from fake images.
                 binary_labels = tf.concat(  
-                    [tf.ones((self.config.batch_size, 1)), tf.zeros((self.config.batch_size, 1))], axis=0
+                    [tf.ones((y.shape[0], 1)), tf.zeros((y.shape[0], 1))], axis=0
                 )
 
                 # Add random noise to the labels - important trick!
@@ -571,12 +772,12 @@ class GAN(tf.keras.Model):
 
         # Train the generator
         # Get the latent vector
-        noise = tf.random.normal([self.config.batch_size, self.latent_dim])
+        noise = tf.random.normal([y.shape[0], self.latent_dim])
         random_vector_labels = tf.concat(
             [noise, y], axis=1
             )
         # Assemble labels that say "all real images". 
-        misleading_labels = tf.ones((self.config.batch_size, 1))
+        misleading_labels = tf.ones((y.shape[0], 1))
         with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
             generated_features = self.generator(random_vector_labels, training=True)
             
@@ -604,11 +805,16 @@ class GAN(tf.keras.Model):
     
     @tf.function
     def test_step(self,data):
-        x, y = data
-        real_features = self.cls.get_features(x)
-        if len(real_features) == 1:
-            real_features = real_features[self.config.features_ouput_layer_list[0]]
-        noise = tf.random.normal([self.config.batch_size, self.latent_dim])
+        if self.config.dataset == "real_data":
+            real_features, y = data
+        else:
+            x, y = data
+            #use cls model to generate real features
+            real_features = self.cls.get_features(x)
+
+        if len(real_features) == 1 and self.config.dataset != "real_data":
+                real_features = real_features[self.config.features_ouput_layer_list[0]]
+        noise = tf.random.normal([y.shape[0], self.latent_dim])
         y = tf.expand_dims(y, axis=1)
         random_vector_labels = tf.concat(
             [noise, y], axis=1
@@ -621,9 +827,9 @@ class GAN(tf.keras.Model):
 
         # Assemble labels discriminating real from fake images.
         binary_labels = tf.concat(  #set real img classify to zero
-            [tf.ones((self.config.batch_size, 1)), tf.zeros((self.config.batch_size, 1))], axis=0
+            [tf.ones((y.shape[0], 1)), tf.zeros((y.shape[0], 1))], axis=0
         )
-        misleading_labels = tf.ones((self.config.batch_size, 1))
+        misleading_labels = tf.ones((y.shape[0], 1))
 
         category_label = tf.concat(  
                     [y, y], axis=0
@@ -632,8 +838,8 @@ class GAN(tf.keras.Model):
         binary_predictions, category_predictions = predictions[:, :1], predictions[:, 1:]
         
         #using fake img's output to count generator loss
-        gen_binary_loss = self.loss_fn_binary(misleading_labels,binary_predictions[self.config.batch_size:])
-        gen_categorical_loss  = self.loss_fn_categorical(y, category_predictions[self.config.batch_size:]) 
+        gen_binary_loss = self.loss_fn_binary(misleading_labels,binary_predictions[y.shape[0]:])
+        gen_categorical_loss  = self.loss_fn_categorical(y, category_predictions[y.shape[0]:]) 
         gen_loss = gen_binary_loss + gen_categorical_loss
         
         disc_binary_cost = self.loss_fn_binary(binary_labels, binary_predictions)
