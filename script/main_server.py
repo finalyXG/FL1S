@@ -4,17 +4,16 @@ import tensorflow as tf
 import argparse
 import copy
 from script.model import Classifier
-
+import os
 def get_features_centre(features, labels): 
-    feature_output_layer_feature_avg_dic = {i:{} for i in features.keys()}
-    for layer_num, feature_data in features.items():
-        feature_data, labels = np.array(feature_data), np.array(labels)
-        for label in set(labels):
-            label_index = np.where(labels==label)
-            feature_in_label = feature_data[label_index]
-            avg_feature = tf.reduce_mean(feature_in_label, axis=0) 
-            feature_output_layer_feature_avg_dic[layer_num][label] = avg_feature
-    return feature_output_layer_feature_avg_dic
+    feature_avg_dic = {}
+    feature_data, labels = np.array(features,dtype=object), np.array(labels)
+    for label in set(labels):
+        label_index = np.where(labels==label)
+        feature_in_label = feature_data[label_index]
+        avg_feature = tf.reduce_mean(tf.convert_to_tensor(feature_in_label, dtype=tf.float32), axis=0) 
+        feature_avg_dic[label] = avg_feature
+    return feature_avg_dic
 
 def concatenate_feature_labels(config):
     feature_list = []
@@ -22,78 +21,73 @@ def concatenate_feature_labels(config):
     features_centre_dict_list = []
     zero_feature_index_list = []
     if config.clients_1_feature_path is not None:
-        tmp_feature = np.load(f"{config.clients_1_feature_path}/real_features.npy",allow_pickle=True).item()
+        tmp_feature = np.load(f"{config.clients_1_feature_path}",allow_pickle=True)#.item()
         feature_list.append(tmp_feature)
-        tmp_label = np.load(f"{config.clients_1_feature_path}/label.npy",allow_pickle=True)
+        tmp_label = np.load(f"{config.clients_1_label_path}",allow_pickle=True)
         label_list.append(tmp_label)
         if config.adjust_model_weight_by_zero_feature_index:
-            zero_feature_index = np.load(f"{config.clients_1_feature_path}/zero_feature_index.npy")
+            zero_feature_index = np.load(f"{config.clients_1_zero_feature_index_path}")
             zero_feature_index_list.append(zero_feature_index)
         features_centre_dict = get_features_centre(tmp_feature, tmp_label)
         features_centre_dict_list.append(features_centre_dict)
     if config.clients_2_feature_path is not None:
-        tmp_feature = np.load(f"{config.clients_2_feature_path}/real_features.npy",allow_pickle=True).item()
+        tmp_feature = np.load(f"{config.clients_2_feature_path}",allow_pickle=True)#.item()
         feature_list.append(tmp_feature)
-        tmp_label = np.load(f"{config.clients_2_feature_path}/label.npy",allow_pickle=True)
+        tmp_label = np.load(f"{config.clients_2_label_path}",allow_pickle=True)
         label_list.append(tmp_label)
         if config.adjust_model_weight_by_zero_feature_index:
-            zero_feature_index = np.load(f"{config.clients_2_feature_path}/zero_feature_index.npy")
+            zero_feature_index = np.load(f"{config.clients_2_zero_feature_index_path}")
             zero_feature_index_list.append(zero_feature_index)
         features_centre_dict = get_features_centre(tmp_feature, tmp_label)
         features_centre_dict_list.append(features_centre_dict)
     if config.clients_3_feature_path is not None:
-        tmp_feature = np.load(f"{config.clients_3_feature_path}/real_features.npy",allow_pickle=True).item()
+        tmp_feature = np.load(f"{config.clients_3_feature_path}",allow_pickle=True)#.item()
         feature_list.append(tmp_feature)
-        tmp_label = np.load(f"{config.clients_3_feature_path}/label.npy",allow_pickle=True)
+        tmp_label = np.load(f"{config.clients_3_label_path}",allow_pickle=True)
         label_list.append(tmp_label)
         if config.adjust_model_weight_by_zero_feature_index:
-            zero_feature_index = np.load(f"{config.clients_3_feature_path}/zero_feature_index.npy")
+            zero_feature_index = np.load(f"{config.clients_3_zero_feature_index_path}")
             zero_feature_index_list.append(zero_feature_index)
         features_centre_dict = get_features_centre(tmp_feature, tmp_label)
         features_centre_dict_list.append(features_centre_dict)
     if config.clients_4_feature_path is not None:
-        tmp_feature = np.load(f"{config.clients_4_feature_path}/real_features.npy",allow_pickle=True).item()
+        tmp_feature = np.load(f"{config.clients_4_feature_path}",allow_pickle=True)#.item()
         feature_list.append(tmp_feature)
-        tmp_label = np.load(f"{config.clients_4_feature_path}/label.npy",allow_pickle=True)
+        tmp_label = np.load(f"{config.clients_4_label_path}",allow_pickle=True)
         label_list.append(tmp_label)
         if config.adjust_model_weight_by_zero_feature_index:
-            zero_feature_index = np.load(f"{config.clients_4_feature_path}/zero_feature_index.npy")
+            zero_feature_index = np.load(f"{config.clients_4_zero_feature_index_path}")
             zero_feature_index_list.append(zero_feature_index)
         features_centre_dict = get_features_centre(tmp_feature, tmp_label)
         features_centre_dict_list.append(features_centre_dict)
     if config.clients_5_feature_path is not None:
-        tmp_feature = np.load(f"{config.clients_5_feature_path}/real_features.npy",allow_pickle=True).item()
+        tmp_feature = np.load(f"{config.clients_5_feature_path}",allow_pickle=True)#.item()
         feature_list.append(dict(tmp_feature))
-        tmp_label = np.load(f"{config.clients_5_feature_path}/label.npy",allow_pickle=True)
+        tmp_label = np.load(f"{config.clients_5_label_path}",allow_pickle=True)
         label_list.append(tmp_label)
         if config.adjust_model_weight_by_zero_feature_index:
-            zero_feature_index = np.load(f"{config.clients_5_feature_path}/zero_feature_index.npy")
+            zero_feature_index = np.load(f"{config.clients_5_zero_feature_index_path}")
             zero_feature_index_list.append(zero_feature_index)
         features_centre_dict = get_features_centre(tmp_feature, tmp_label)
         features_centre_dict_list.append(features_centre_dict)
-    dataset_dict = {}
-    feature_dict = {}
-    labels_dict = {}
-    for index, feature in enumerate(feature_list):
-        for layer_num in config.features_ouput_layer_list:
-            if index:
-                feature_dict[layer_num] = np.concatenate((feature_dict[layer_num], feature[layer_num]),axis=0)
-                labels_dict[layer_num] = np.concatenate((labels_dict[layer_num], label_list[index]),axis=0)
-            else:   #when index == 0 initial feature and labels
-                feature_dict[layer_num] = feature[layer_num]
-                labels_dict[layer_num] = label_list[index]
 
-    total_features_centre_dict = {layer_num: None for layer_num in feature_dict.keys()}
-    for layer_num, v in feature_dict.items():
-        dataset_dict[layer_num] = list(zip(v, labels_dict[layer_num]))
-        for features_centre_dict in features_centre_dict_list:
-            if total_features_centre_dict[layer_num]:
-                for label, features_centre in features_centre_dict[layer_num].items():
-                    total_features_centre_dict[layer_num][label] = tf.stack([total_features_centre_dict[layer_num][label],features_centre])
-                    total_features_centre_dict[layer_num][label] = tf.reduce_mean(total_features_centre_dict[layer_num][label], axis=0) 
-            else:
-                total_features_centre_dict[layer_num] = features_centre_dict[layer_num]
-    return dataset_dict, total_features_centre_dict, zero_feature_index_list
+    for index, feature in enumerate(feature_list):
+        if index:
+            integrate_feature = np.concatenate((integrate_feature, feature),axis=0)
+            integrate_labels = np.concatenate((integrate_labels, label_list[index]),axis=0)
+        else:   #when index == 0 initial feature and labels
+            integrate_feature = feature
+            integrate_labels = label_list[index]
+    total_features_centre_dict = {}
+    feature_dataset = list(zip(integrate_feature, integrate_labels))
+    for features_centre_dict in features_centre_dict_list:
+        if total_features_centre_dict:
+            for label, features_centre in features_centre_dict.items():
+                total_features_centre_dict[label] = tf.stack([total_features_centre_dict[label],features_centre])
+                total_features_centre_dict[label] = tf.reduce_mean(total_features_centre_dict[label], axis=0) 
+        else:
+            total_features_centre_dict = features_centre_dict    
+    return feature_dataset, total_features_centre_dict, zero_feature_index_list
 
 def model_avg_init(config, cls, zero_feature_index_list, test_sample):
     weight_object = []
@@ -145,15 +139,18 @@ def model_avg_init(config, cls, zero_feature_index_list, test_sample):
         cls.set_weights(copy.deepcopy(w_avg))
     return cls
 
-def mian(config, cls, test_sample):
+def mian(config, test_sample):
     avg_model = None
     feature_dataset = None
     feature_center = None
     feature_data_dict, feature_center, zero_feature_index_list = concatenate_feature_labels(config)
     if config.use_initial_model_weight:
+        cls = Classifier(config)
         avg_model = model_avg_init(config, cls, zero_feature_index_list, test_sample)
-    avg_model(test_sample)
-    avg_model.save_weights(f"script_tmp/server/{config.dataset}/{config.clients_name}/model_avg/cp-{1:04d}.ckpt")
+        avg_model(test_sample)
+        avg_model.save_weights(f"script_tmp/server/{config.dataset}/{config.clients_name}/model_avg/cp-{1:04d}.ckpt")
+    if not os.path.exists(f"script_tmp/server/{config.dataset}/{config.clients_name}"):
+        os.makedirs(f"script_tmp/server/{config.dataset}/{config.clients_name}")
     np.save(f"script_tmp/server/{config.dataset}/{config.clients_name}/feature_center",feature_center)
     np.save(f"script_tmp/server/{config.dataset}/{config.clients_name}/real_features",feature_data_dict)
     return avg_model, feature_dataset, feature_center
@@ -170,6 +167,43 @@ if __name__ == '__main__':
         "--dataset",
         type=str,
         default="mnist"
+    )
+    parser.add_argument(
+        '--model_type',
+        type=str,
+        default='MHA01',
+        help='''
+        MHA01: use MHA for each subsequence;
+        MHA02: use MHA for each type of sequence
+        '''
+    )
+    parser.add_argument(
+        "--disable_lv1_namaes",
+        type=str,
+        nargs='+',
+        default=[""]
+    )
+    parser.add_argument(
+        "--disable_pp_namaes",
+        type=str,
+        nargs='+',
+        default=[""]
+    )
+    parser.add_argument(
+        "--disable_tx_namaes",
+        type=str,
+        nargs='+',
+        default=[""]
+    )
+    parser.add_argument(
+        "--real_data_feature_type",
+        type=str,
+        nargs='+',
+        default=['before_attention'],
+        help='''
+        before_attention
+        after_attention
+        '''
     )
     parser.add_argument(
         "--adjust_model_weight_by_zero_feature_index",
@@ -245,6 +279,18 @@ if __name__ == '__main__':
     parser.add_argument("--clients_4_feature_path", type=str, default=None)
     parser.add_argument("--clients_5_feature_path", type=str, default=None)
 
+    parser.add_argument("--clients_1_label_path", type=str, default=None)
+    parser.add_argument("--clients_2_label_path", type=str, default=None)
+    parser.add_argument("--clients_3_label_path", type=str, default=None)
+    parser.add_argument("--clients_4_label_path", type=str, default=None)
+    parser.add_argument("--clients_5_label_path", type=str, default=None)
+
+    parser.add_argument("--clients_1_zero_feature_index_path", type=str, default=None)
+    parser.add_argument("--clients_2_zero_feature_index_path", type=str, default=None)
+    parser.add_argument("--clients_3_zero_feature_index_path", type=str, default=None)
+    parser.add_argument("--clients_4_zero_feature_index_path", type=str, default=None)
+    parser.add_argument("--clients_5_zero_feature_index_path", type=str, default=None)
+
     parser.add_argument("--max_to_keep", type=int, default=1)
     parser.add_argument("--use_same_kernel_initializer", type=int, default=1)
 
@@ -258,10 +304,12 @@ if __name__ == '__main__':
     print("features_ouput_layer_list:",args.features_ouput_layer_list)
     print("use_dirichlet_split_data",args.use_dirichlet_split_data)
     args.teacher_repeat = bool(args.teacher_repeat)
-    cls = Classifier(args)
+    if args.dataset == "real_data":
+        # args.features_ouput_layer_list = args.real_data_feature_type
+        args.max_transaction_num = 200
+        args.total_test_size = 500    #related with positional_encoding shape
     if args.dataset != "elliptic":
         test_sample = np.random.rand(3, args.image_size, args.image_size, args.num_channels)
     else:
         test_sample = np.random.rand(3, args.input_feature_size)
-
-    avg_model, feature_dataset, feature_center = mian(args, cls, test_sample)
+    avg_model, feature_dataset, feature_center = mian(args, test_sample)
